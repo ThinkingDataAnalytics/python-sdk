@@ -1,7 +1,6 @@
 # encoding:utf-8
 
 from __future__ import unicode_literals
-import base64
 import datetime
 import gzip
 import json
@@ -21,6 +20,8 @@ except ImportError:
 
 try:
     isinstance("", basestring)
+
+
     def is_str(s):
         return isinstance(s, basestring)
 except NameError:
@@ -29,6 +30,8 @@ except NameError:
 
 try:
     isinstance(1, long)
+
+
     def is_int(n):
         return isinstance(n, int) or isinstance(n, long)
 except NameError:
@@ -37,14 +40,17 @@ except NameError:
 
 try:
     from enum import Enum
-    ROTATE_MODE = Enum('ROTATE_MODE', ('DAILY','HOURLY'))
+
+    ROTATE_MODE = Enum('ROTATE_MODE', ('DAILY', 'HOURLY'))
 except ImportError:
     class ROTATE_MODE(object):
         DAILY = 0
         HOURLY = 1
 
+
 class TGAException(Exception):
     pass
+
 
 class TGAIllegalDataException(TGAException):
     """数据格式异常
@@ -53,6 +59,7 @@ class TGAIllegalDataException(TGAException):
     """
     pass
 
+
 class TGANetworkException(TGAException):
     """网络异常
 
@@ -60,13 +67,15 @@ class TGANetworkException(TGAException):
     """
     pass
 
-__version__ = '1.2.0'
+
+__version__ = '1.3.0'
+
 
 class TGAnalytics(object):
     """TGAnalytics 实例是发送事件数据和用户属性数据的关键实例
     """
 
-    __NAME_PATTERN  = re.compile(r"^(#[a-z][a-z0-9_]{0,49})|([a-z][a-z0-9_]{0,50})$", re.I)
+    __NAME_PATTERN = re.compile(r"^(#[a-z][a-z0-9_]{0,49})|([a-z][a-z0-9_]{0,50})$", re.I)
 
     def __init__(self, consumer):
         """创建一个 TGAnalytics 实例
@@ -96,6 +105,17 @@ class TGAnalytics(object):
         """
         self.__add(distinct_id, account_id, 'user_set', None, properties)
 
+    def user_unset(self, distinct_id=None, account_id=None, properties=None):
+        """
+        删除某个用户的用户属性
+        :param distinct_id:
+        :param account_id:
+        :param properties:
+        """
+        if isinstance(properties, list):
+            properties = dict((key, 0) for key in properties)
+        self.__add(distinct_id, account_id, 'user_unset', None, properties)
+
     def user_setOnce(self, distinct_id=None, account_id=None, properties=None):
         """设置用户属性, 不覆盖已存在的用户属性
 
@@ -111,7 +131,7 @@ class TGAnalytics(object):
     def user_add(self, distinct_id=None, account_id=None, properties=None):
         """对指定的数值类型的用户属性进行累加操作
 
-        当您要上传数值型的属性时，您可以调用 user_add 来对该属性进行累加操作. 如果该属性还未被设置，则会赋值0后再进行计算. 
+        当您要上传数值型的属性时，您可以调用 user_add 来对该属性进行累加操作. 如果该属性还未被设置，则会赋值0后再进行计算.
         可传入负值，等同于相减操作.
 
         Args:
@@ -120,6 +140,15 @@ class TGAnalytics(object):
             properties: 数值类型的用户属性
         """
         self.__add(distinct_id, account_id, 'user_add', None, properties)
+
+    def user_append(self, distinct_id=None, account_id=None, properties=None):
+        """追加一个用户的某一个或者多个集合类型
+        Args:
+            distinct_id: 访客 ID
+            account_id: 账户 ID
+            properties: 集合
+        """
+        self.__add(distinct_id, account_id, 'user_append', None, properties)
 
     def user_del(self, distinct_id=None, account_id=None):
         """删除用户
@@ -181,21 +210,25 @@ class TGAnalytics(object):
             properties = properties_add.copy()
         else:
             properties = {}
-
-        self.__assertProperties(type, properties)
-        td_time = properties.get("#time",)
-        del (properties['#time'])
-
-        ip = properties.get("#ip", "")
+        data = {
+            '#type': type
+        }
         if "#ip" in properties.keys():
+            data['#ip'] = properties.get("#ip")
             del (properties['#ip'])
 
-        data = {
-            '#time': td_time,
-            '#ip': ip,
-            '#type': type,
-            'properties': properties
-        }
+        #只支持UUID标准格式xxxxxxxx - xxxx - xxxx - xxxx - xxxxxxxxxxxx
+        if "#uuid" in properties.keys():
+            data['#uuid'] = str(properties['#uuid'])
+            del (properties['#uuid'])
+
+        self.__assert_properties(type, properties)
+        td_time = properties.get("#time")
+        data['#time'] = td_time
+        del (properties['#time'])
+
+        data['properties'] = properties
+
         if 'track' == type:
             data['#event_name'] = event_name
 
@@ -206,7 +239,7 @@ class TGAnalytics(object):
 
         self.__consumer.add(json.dumps(data))
 
-    def __assertProperties(self, action_type, properties):
+    def __assert_properties(self, action_type, properties):
         if properties is not None:
             if "#time" not in properties.keys():
                 properties['#time'] = datetime.datetime.now()
@@ -231,18 +264,25 @@ class TGAnalytics(object):
                     raise TGAIllegalDataException(
                         "type[%s] property key must be a valid variable name. [key=%s]" % (action_type, str(key)))
 
-                if not is_str(value) and not is_int(value) and not isinstance(value, (float)) and not isinstance(value, (bool)) and not isinstance(value,
-                    datetime.datetime) and not isinstance(value, datetime.date):
+                if not is_str(value) and not is_int(value) and not isinstance(value, (float)) and not isinstance(value,(bool))\
+                        and not isinstance(value, datetime.datetime) and not isinstance(value, datetime.date) \
+                        and not isinstance(value, list):
                     raise TGAIllegalDataException(
-                        "property value must be a str/int/float/bool/datetime/date. [value=%s]" % type(value))
+                        "property value must be a str/int/float/bool/datetime/date/list. [value=%s]" % type(value))
 
                 if 'user_add' == action_type.lower() and not self.__number(value) and not key.startswith('#'):
                     raise TGAIllegalDataException('user_add properties must be number type')
 
                 if isinstance(value, datetime.datetime):
-                    properties[key] = value.strftime('%Y-%m-%d %H:%M:%S') + ".000"
+                    properties[key] = value.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                 elif isinstance(value, datetime.date):
                     properties[key] = value.strftime('%Y-%m-%d')
+                if isinstance(value, list):
+                    i = 0
+                    for lvalue in value:
+                        if isinstance(lvalue, datetime.datetime):
+                            value[i] = lvalue.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                        i += 1
 
     def __number(self, s):
         if is_int(s):
@@ -267,8 +307,10 @@ class TGAnalytics(object):
         """
         self.__super_properties.update(super_properties)
 
+
 if os.name == 'nt':
     import msvcrt
+
 
     def _lock(file_):
         try:
@@ -283,6 +325,7 @@ if os.name == 'nt':
                     file_.seek(savepos)
         except IOError as e:
             raise TGAException(e)
+
 
     def _unlock(file_):
         try:
@@ -301,11 +344,13 @@ if os.name == 'nt':
 elif os.name == 'posix':
     import fcntl
 
+
     def _lock(file_):
         try:
             fcntl.flock(file_.fileno(), fcntl.LOCK_EX)
         except IOError as e:
             raise TGAException(e)
+
 
     def _unlock(file_):
         fcntl.flock(file_.fileno(), fcntl.LOCK_UN)
@@ -323,6 +368,7 @@ class _TAFileLock(object):
 
     def __exit__(self, t, v, tb):
         _unlock(self._file_handler)
+
 
 class LoggingConsumer(object):
     """数据批量实时写入本地文件
@@ -389,10 +435,10 @@ class LoggingConsumer(object):
     @classmethod
     def getSplitLogSuffix(cls, directory, date_suffix, filesize):
         split_log_suffix = len([x for x in os.listdir(directory) if "log." + date_suffix in x])
-        if split_log_suffix  != 0:
-            split_log_suffix = split_log_suffix  - 1
+        if split_log_suffix != 0:
+            split_log_suffix = split_log_suffix - 1
         filename = directory + "log." + date_suffix + "_" + str(split_log_suffix)
-        if(os.path.exists(filename)):
+        if (os.path.exists(filename)):
             split_log_suffix = cls.fileSizeOut(filename, filesize, split_log_suffix)
         return split_log_suffix
 
@@ -412,7 +458,7 @@ class LoggingConsumer(object):
     def lockLoggingConsumer(cls):
         cls._mutex.get(block=True, timeout=None)
 
-    def __init__(self, log_directory, log_size=0, bufferSize=8192, rotate_mode = ROTATE_MODE.DAILY):
+    def __init__(self, log_directory, log_size=0, bufferSize=8192, rotate_mode=ROTATE_MODE.DAILY):
         """创建指定日志文件目录的 LoggingConsumer
 
         Args:
@@ -421,7 +467,7 @@ class LoggingConsumer(object):
             bufferSize: 每次写入文件的大小, 单位 Byte, 默认 8K
             rotate_mode: 日志切分模式，默认按天切分
         """
-        self.log_directory = log_directory # log文件保存的目录
+        self.log_directory = log_directory  # log文件保存的目录
         self.sdf = '%Y-%m-%d-%H' if rotate_mode == ROTATE_MODE.HOURLY else '%Y-%m-%d'
         self.suffix = datetime.datetime.now().strftime(self.sdf)
         self._fileSize = log_size  # 单个log文件的大小
@@ -477,6 +523,7 @@ class LoggingConsumer(object):
     def close(self):
         self.flushWithClose(True)
 
+
 class BatchConsumer(object):
     """同步、批量地向 TA 服务器传输数据
 
@@ -489,7 +536,7 @@ class BatchConsumer(object):
     """
     _batchlock = threading.RLock()
 
-    def __init__(self, server_uri, appid, batch=20, timeout=30000, interval=3):
+    def __init__(self, server_uri, appid, batch=20, timeout=30000, interval=3, compress=True):
         """创建 BatchConsumer
 
         Args:
@@ -503,13 +550,15 @@ class BatchConsumer(object):
         self.__batch = min(batch, 200)
         self.__message_channel = []
         self.__last_flush = time.time()
-        self.__http_service = _HttpServices(server_uri, appid, timeout)
+        server_url = urlparse(server_uri)
+        self.__http_service = _HttpServices(server_url._replace(path='/sync_server').geturl(), appid, timeout)
+        self.__http_service.compress = compress
 
     def add(self, msg):
         self._batchlock.acquire()
         self.__message_channel.append(msg)
         if len(self.__message_channel) >= self.__batch or (
-                    time.time() - self.__last_flush >= self.__interval and len(self.__message_channel) > 0):
+                time.time() - self.__last_flush >= self.__interval and len(self.__message_channel) > 0):
             self.flush()
         self._batchlock.release()
 
@@ -533,6 +582,8 @@ class BatchConsumer(object):
         while len(self.__message_channel) > 0:
             self.flush()
 
+    pass
+
 
 class AsyncBatchConsumer(object):
     """异步、批量地向 TA 服务器发送数据的
@@ -542,7 +593,7 @@ class AsyncBatchConsumer(object):
     2. 数据发送间隔超过预定义的最大时间, 默认为 3 秒
     """
 
-    def __init__(self, server_uir, appid, interval=3, flush_size=20, queue_size=100000):
+    def __init__(self, server_uri, appid, interval=3, flush_size=20, queue_size=100000):
         """创建 AsyncBatchConsumer
 
         Args:
@@ -552,7 +603,8 @@ class AsyncBatchConsumer(object):
             flush_size: 队列缓存的阈值，超过此值将立即进行发送
             queue_size: 缓存队列的大小
         """
-        self.__http_service = _HttpServices(server_uir, appid, 30000)
+        server_url = urlparse(server_uri)
+        self.__http_service = _HttpServices(server_url._replace(path='/sync_server').geturl(), appid, 30000)
         self.__batch = flush_size
         self.__queue = queue.Queue(queue_size)
 
@@ -585,13 +637,13 @@ class AsyncBatchConsumer(object):
         """
         flush_buffer = []
         while len(flush_buffer) < self.__batch:
-            try: 
-               flush_buffer.append(str(self.__queue.get_nowait()))
+            try:
+                flush_buffer.append(str(self.__queue.get_nowait()))
             except queue.Empty:
                 break
 
         if len(flush_buffer) > 0:
-            for i in range(3): # 网络异常情况下重试 3 次
+            for i in range(3):  # 网络异常情况下重试 3 次
                 try:
                     self.__http_service.send('[' + ','.join(flush_buffer) + ']')
                     return True
@@ -633,17 +685,18 @@ class AsyncBatchConsumer(object):
                     break
             self._finished_event.set()
 
+
 class _HttpServices(object):
     """内部类，用于发送网络请求
 
-    指定接收端地址和项目 APP ID, 实现向接收端上传数据的接口. 发送前将数据使用 Gzip 压缩, 
-    并进行 base64 编码.
+    指定接收端地址和项目 APP ID, 实现向接收端上传数据的接口. 发送前将数据默认使用 Gzip 压缩,
     """
 
     def __init__(self, server_uri, appid, timeout=30000):
         self.url = server_uri
         self.appid = appid
         self.timeout = timeout
+        self.compress = True
 
     def send(self, data):
         """使用 Requests 发送数据给服务器
@@ -661,8 +714,14 @@ class _HttpServices(object):
         headers['version'] = __version__
 
         try:
-            response = requests.post(self.url, data=self._gzip_string(data.encode("utf-8")),
-                headers=headers, timeout=self.timeout)
+            if self.compress:
+                self.compress = 'gzip'
+                data = self._gzip_string(data.encode("utf-8"))
+            else:
+                self.compress = 'none'
+                data = data.encode("utf-8")
+            headers['compress'] = self.compress
+            response = requests.post(self.url, data=data, headers=headers, timeout=self.timeout)
             if response.status_code == 200:
                 responseData = json.loads(response.text)
                 if responseData["code"] == 0:
@@ -677,14 +736,14 @@ class _HttpServices(object):
 
     def _gzip_string(self, data):
         try:
-            return base64.b64encode(gzip.compress(data))
+            return gzip.compress(data)
         except AttributeError:
             import StringIO
             buf = StringIO.StringIO()
             fd = gzip.GzipFile(fileobj=buf, mode="w")
             fd.write(data)
             fd.close()
-            return base64.b64encode(buf.getvalue())
+            return buf.getvalue()
 
 
 class DebugConsumer(object):
@@ -694,7 +753,7 @@ class DebugConsumer(object):
     建议首先使用此 Consumer 来调试埋点数据.
     """
 
-    def __init__(self, server_uri, appid, timeout=30000):
+    def __init__(self, server_uri, appid, timeout=30000, write_data=True):
         """创建 DebugConsumer
 
         Args:
@@ -703,21 +762,27 @@ class DebugConsumer(object):
             timeout: 请求的超时时间, 单位毫秒, 默认为 30000 ms
         """
         server_url = urlparse(server_uri)
-        debug_url = server_url._replace(path='/sync_data')
+        debug_url = server_url._replace(path='/data_debug')
         self.__server_uri = debug_url.geturl()
         self.__appid = appid
         self.__timeout = timeout
+        self.__writer_data = write_data
 
     def add(self, msg):
         try:
-            response = requests.post(self.__server_uri, data={'debug':1, 'appid':self.__appid, 'data':msg},
+            dry_run = 0
+            if not self.__writer_data:
+                dry_run = 1
+            response = requests.post(self.__server_uri,
+                                     data={'source': 'server', 'appid': self.__appid, 'data': msg, 'dryRun': dry_run},
                                      timeout=self.__timeout)
             if response.status_code == 200:
                 responseData = json.loads(response.text)
-                if responseData["code"] == 0:
+                if responseData["errorLevel"] == 0:
                     return True
                 else:
-                    raise TGAIllegalDataException("Unexpected result code: " + str(responseData["code"]) + " due to " + responseData["msg"])
+                    raise TGAIllegalDataException(
+                        "Unexpected result : \n" + str(responseData))
             else:
                 raise TGANetworkException("Unexpected http status code: " + str(response.status_code))
         except ConnectionError as e:
