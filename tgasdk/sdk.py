@@ -68,7 +68,7 @@ class TGANetworkException(TGAException):
     pass
 
 
-__version__ = '1.3.0'
+__version__ = '1.3.1'
 
 
 class TGAnalytics(object):
@@ -781,8 +781,7 @@ class DebugConsumer(object):
                 if responseData["errorLevel"] == 0:
                     return True
                 else:
-                    raise TGAIllegalDataException(
-                        "Unexpected result : \n" + str(responseData))
+                    print("Unexpected result : \n %s" % response.text)
             else:
                 raise TGANetworkException("Unexpected http status code: " + str(response.status_code))
         except ConnectionError as e:
