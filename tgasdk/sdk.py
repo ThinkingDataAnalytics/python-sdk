@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import time
+import uuid
 import requests
 from requests import ConnectionError
 
@@ -68,7 +69,7 @@ class TGANetworkException(TGAException):
     pass
 
 
-__version__ = '1.3.1'
+__version__ = '1.3.2'
 
 
 class TGAnalytics(object):
@@ -77,7 +78,7 @@ class TGAnalytics(object):
 
     __NAME_PATTERN = re.compile(r"^(#[a-z][a-z0-9_]{0,49})|([a-z][a-z0-9_]{0,50})$", re.I)
 
-    def __init__(self, consumer):
+    def __init__(self, consumer, enableUuid=False):
         """创建一个 TGAnalytics 实例
 
         TGAanlytics 需要与指定的 Consumer 一起使用，可以使用以下任何一种:
@@ -90,6 +91,7 @@ class TGAnalytics(object):
             consumer: 指定的 Consumer
         """
         self.__consumer = consumer
+        self.__enableUuid = enableUuid
         self.__super_properties = {}
 
     def user_set(self, distinct_id=None, account_id=None, properties=None):
@@ -203,7 +205,7 @@ class TGAnalytics(object):
         self.__consumer.close()
 
     def __add(self, distinct_id, account_id, type, event_name=None, properties_add=None):
-        if distinct_id == None and account_id == None:
+        if distinct_id is None and account_id is None:
             raise TGAException("Distinct_id and account_id must be set at least one")
 
         if properties_add:
@@ -217,10 +219,12 @@ class TGAnalytics(object):
             data['#ip'] = properties.get("#ip")
             del (properties['#ip'])
 
-        #只支持UUID标准格式xxxxxxxx - xxxx - xxxx - xxxx - xxxxxxxxxxxx
+        # 只支持UUID标准格式xxxxxxxx - xxxx - xxxx - xxxx - xxxxxxxxxxxx
         if "#uuid" in properties.keys():
             data['#uuid'] = str(properties['#uuid'])
             del (properties['#uuid'])
+        elif self.__enableUuid:
+            data['#uuid'] = str(uuid.uuid1())
 
         self.__assert_properties(type, properties)
         td_time = properties.get("#time")
@@ -425,30 +429,27 @@ class LoggingConsumer(object):
                 self._file.flush()
 
     @classmethod
-    def construct_filename(cls, directory, date_suffix, filesize):
-        if filesize > 0:
-            file_suffix = cls.getSplitLogSuffix(directory, date_suffix, filesize)
-            return directory + "log." + date_suffix + "_" + str(file_suffix)
+    def construct_filename(cls, directory, date_suffix, file_size, file_suffix):
+        filename = file_suffix + ".log." + date_suffix \
+            if file_suffix is not None else "log." + date_suffix
+
+        if file_size > 0:
+            count = 0
+            file_path = directory + filename + "_" + str(count)
+            while os.path.exists(file_path) and cls.file_size_out(file_path, file_size):
+                count = count + 1
+                file_path = directory + filename + "_" + str(count)
+            return file_path
         else:
-            return directory + "log." + date_suffix
+            return directory + filename
 
     @classmethod
-    def getSplitLogSuffix(cls, directory, date_suffix, filesize):
-        split_log_suffix = len([x for x in os.listdir(directory) if "log." + date_suffix in x])
-        if split_log_suffix != 0:
-            split_log_suffix = split_log_suffix - 1
-        filename = directory + "log." + date_suffix + "_" + str(split_log_suffix)
-        if (os.path.exists(filename)):
-            split_log_suffix = cls.fileSizeOut(filename, filesize, split_log_suffix)
-        return split_log_suffix
-
-    @classmethod
-    def fileSizeOut(cls, filePath, filesize, split_log_suffix):
-        fsize = os.path.getsize(filePath)
+    def file_size_out(cls, file_path, file_size):
+        fsize = os.path.getsize(file_path)
         fsize = fsize / float(1024 * 1024)
-        if fsize >= filesize:
-            split_log_suffix += 1
-        return split_log_suffix
+        if fsize >= file_size:
+            return True
+        return False
 
     @classmethod
     def unlockLoggingConsumer(cls):
@@ -458,7 +459,7 @@ class LoggingConsumer(object):
     def lockLoggingConsumer(cls):
         cls._mutex.get(block=True, timeout=None)
 
-    def __init__(self, log_directory, log_size=0, bufferSize=8192, rotate_mode=ROTATE_MODE.DAILY):
+    def __init__(self, log_directory, log_size=0, bufferSize=8192, rotate_mode=ROTATE_MODE.DAILY, file_suffix=None):
         """创建指定日志文件目录的 LoggingConsumer
 
         Args:
@@ -476,9 +477,9 @@ class LoggingConsumer(object):
 
         self._buffer = []
         self._bufferSize = bufferSize
-
+        self.file_suffix = file_suffix
         self.lockLoggingConsumer()
-        filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize)
+        filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize, self.file_suffix)
         self._writer = LoggingConsumer._FileWriter.getInstance(filename)
         self.unlockLoggingConsumer()
 
@@ -492,7 +493,8 @@ class LoggingConsumer(object):
             if self.suffix != date_suffix:
                 self.suffix = date_suffix
                 self._split_log_suffix = 0
-            filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize)
+            filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize,
+                                                          self.file_suffix)
             if not self._writer.isValid(filename):
                 self._writer.close()
                 self._writer = LoggingConsumer._FileWriter.getInstance(filename)
@@ -506,7 +508,8 @@ class LoggingConsumer(object):
         self.lockLoggingConsumer()
         if len(self._buffer) > 0:
             messages = self._buffer
-            filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize)
+            filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize,
+                                                          self.file_suffix)
             if not self._writer.isValid(filename):
                 self._writer.close()
                 self._writer = LoggingConsumer._FileWriter.getInstance(filename)
@@ -569,7 +572,7 @@ class BatchConsumer(object):
                 msg = self.__message_channel[:self.__batch]
             else:
                 msg = self.__message_channel[:len(self.__message_channel)]
-            self.__http_service.send('[' + ','.join(msg) + ']')
+            self.__http_service.send(msg)
             self.__last_flush = time.time()
             self.__message_channel = self.__message_channel[len(msg):]
         except TGAException as e:
@@ -645,7 +648,7 @@ class AsyncBatchConsumer(object):
         if len(flush_buffer) > 0:
             for i in range(3):  # 网络异常情况下重试 3 次
                 try:
-                    self.__http_service.send('[' + ','.join(flush_buffer) + ']')
+                    self.__http_service.send(flush_buffer)
                     return True
                 except TGANetworkException:
                     pass
@@ -677,8 +680,8 @@ class AsyncBatchConsumer(object):
             while True:
                 # 如果 _flush_event 标志位为 True，或者等待超过 _interval 则继续执行
                 self._flush_event.wait(self._interval)
-                self._consumer._perform_request()
-                self._flush_event.clear()
+                if self._consumer._perform_request():
+                   self._flush_event.clear()
 
                 # 发现 stop 标志位时安全退出
                 if self._stop_event.isSet():
@@ -698,7 +701,7 @@ class _HttpServices(object):
         self.timeout = timeout
         self.compress = True
 
-    def send(self, data):
+    def send(self, msg):
         """使用 Requests 发送数据给服务器
 
         Args:
@@ -708,26 +711,24 @@ class _HttpServices(object):
             TGAIllegalDataException: 数据错误
             TGANetworkException: 网络错误
         """
-        headers = {}
-        headers['appid'] = self.appid
-        headers['user-agent'] = 'tga-python-sdk'
-        headers['version'] = __version__
-
+        headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': __version__,
+                   'TA-Integration-Count': str(len(msg))}
         try:
+            data = '[' + ','.join(msg) + ']'
+            compress_type = 'gzip'
             if self.compress:
-                self.compress = 'gzip'
                 data = self._gzip_string(data.encode("utf-8"))
             else:
-                self.compress = 'none'
+                compress_type = 'none'
                 data = data.encode("utf-8")
-            headers['compress'] = self.compress
+            headers['compress'] = compress_type
             response = requests.post(self.url, data=data, headers=headers, timeout=self.timeout)
             if response.status_code == 200:
-                responseData = json.loads(response.text)
-                if responseData["code"] == 0:
+                response_data = json.loads(response.text)
+                if response_data["code"] == 0:
                     return True
                 else:
-                    raise TGAIllegalDataException("Unexpected result code: " + str(responseData["code"]))
+                    raise TGAIllegalDataException("Unexpected result code: " + str(response_data["code"]))
             else:
                 raise TGANetworkException("Unexpected Http status code " + response.status_code)
         except ConnectionError as e:

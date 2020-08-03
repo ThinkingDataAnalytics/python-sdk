@@ -1,3 +1,7 @@
+**v1.3.2** (2020/08/03)
+- 支持 LoggingConsumer 配置文件前缀名
+- 新增UUID配置开关
+
 **v1.3.1** (2020/02/26)
 - 兼容python2的DebugConsumer错误日志打印
 
