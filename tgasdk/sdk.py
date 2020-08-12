@@ -69,7 +69,7 @@ class TGANetworkException(TGAException):
     pass
 
 
-__version__ = '1.3.2'
+__version__ = '1.3.3'
 
 
 class TGAnalytics(object):
@@ -572,7 +572,7 @@ class BatchConsumer(object):
                 msg = self.__message_channel[:self.__batch]
             else:
                 msg = self.__message_channel[:len(self.__message_channel)]
-            self.__http_service.send(msg)
+            self.__http_service.send('[' + ','.join(msg) + ']')
             self.__last_flush = time.time()
             self.__message_channel = self.__message_channel[len(msg):]
         except TGAException as e:
@@ -648,7 +648,7 @@ class AsyncBatchConsumer(object):
         if len(flush_buffer) > 0:
             for i in range(3):  # 网络异常情况下重试 3 次
                 try:
-                    self.__http_service.send(flush_buffer)
+                    self.__http_service.send('[' + ','.join(flush_buffer) + ']')
                     return True
                 except TGANetworkException:
                     pass
@@ -680,8 +680,8 @@ class AsyncBatchConsumer(object):
             while True:
                 # 如果 _flush_event 标志位为 True，或者等待超过 _interval 则继续执行
                 self._flush_event.wait(self._interval)
-                if self._consumer._perform_request():
-                   self._flush_event.clear()
+                self._consumer._perform_request()
+                self._flush_event.clear()
 
                 # 发现 stop 标志位时安全退出
                 if self._stop_event.isSet():
@@ -701,7 +701,7 @@ class _HttpServices(object):
         self.timeout = timeout
         self.compress = True
 
-    def send(self, msg):
+    def send(self, data):
         """使用 Requests 发送数据给服务器
 
         Args:
@@ -711,10 +711,12 @@ class _HttpServices(object):
             TGAIllegalDataException: 数据错误
             TGANetworkException: 网络错误
         """
-        headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': __version__,
-                   'TA-Integration-Count': str(len(msg))}
+        headers = {}
+        headers['appid'] = self.appid
+        headers['user-agent'] = 'tga-python-sdk'
+        headers['version'] = __version__
+
         try:
-            data = '[' + ','.join(msg) + ']'
             compress_type = 'gzip'
             if self.compress:
                 data = self._gzip_string(data.encode("utf-8"))
@@ -724,13 +726,13 @@ class _HttpServices(object):
             headers['compress'] = compress_type
             response = requests.post(self.url, data=data, headers=headers, timeout=self.timeout)
             if response.status_code == 200:
-                response_data = json.loads(response.text)
-                if response_data["code"] == 0:
+                responseData = json.loads(response.text)
+                if responseData["code"] == 0:
                     return True
                 else:
-                    raise TGAIllegalDataException("Unexpected result code: " + str(response_data["code"]))
+                    raise TGAIllegalDataException("Unexpected result code: " + str(responseData["code"]))
             else:
-                raise TGANetworkException("Unexpected Http status code " + response.status_code)
+                raise TGANetworkException("Unexpected Http status code " + str(response.status_code))
         except ConnectionError as e:
             time.sleep(0.5)
             raise TGANetworkException("Data transmission failed due to " + repr(e))
