@@ -1,5 +1,9 @@
+**v1.4.0** (2020/08/27)
+- 新增track_update接口，支持可更新事件
+- 新增track_overwrite接口，支持可重写事件
+
 **v1.3.3** (2020/08/12)
-- 修复AsyncBatchConsumer在特殊情况下进程不释放的问题
+- 修复AsyncBatchConsumer在特殊情况下线程不释放的问题
 
 **v1.3.2** (2020/08/03)
 - 支持 LoggingConsumer 配置文件前缀名

@@ -18,7 +18,6 @@ try:
 except ImportError:
     import Queue as queue
     from urlparse import urlparse
-
 try:
     isinstance("", basestring)
 
@@ -28,7 +27,6 @@ try:
 except NameError:
     def is_str(s):
         return isinstance(s, str)
-
 try:
     isinstance(1, long)
 
@@ -69,7 +67,7 @@ class TGANetworkException(TGAException):
     pass
 
 
-__version__ = '1.3.3'
+__version__ = '1.4.0'
 
 
 class TGAnalytics(object):
@@ -93,6 +91,7 @@ class TGAnalytics(object):
         self.__consumer = consumer
         self.__enableUuid = enableUuid
         self.__super_properties = {}
+        self.clear_super_properties()
 
     def user_set(self, distinct_id=None, account_id=None, properties=None):
         """设置用户属性
@@ -105,7 +104,7 @@ class TGAnalytics(object):
             account_id: 账户 ID
             properties: dict 类型的用户属性
         """
-        self.__add(distinct_id, account_id, 'user_set', None, properties)
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_set', properties_add=properties)
 
     def user_unset(self, distinct_id=None, account_id=None, properties=None):
         """
@@ -116,7 +115,7 @@ class TGAnalytics(object):
         """
         if isinstance(properties, list):
             properties = dict((key, 0) for key in properties)
-        self.__add(distinct_id, account_id, 'user_unset', None, properties)
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_unset', properties_add=properties)
 
     def user_setOnce(self, distinct_id=None, account_id=None, properties=None):
         """设置用户属性, 不覆盖已存在的用户属性
@@ -128,7 +127,7 @@ class TGAnalytics(object):
             account_id: 账户 ID
             properties: dict 类型的用户属性
         """
-        self.__add(distinct_id, account_id, 'user_setOnce', None, properties)
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_setOnce', properties_add=properties)
 
     def user_add(self, distinct_id=None, account_id=None, properties=None):
         """对指定的数值类型的用户属性进行累加操作
@@ -141,7 +140,7 @@ class TGAnalytics(object):
             account_id: 账户 ID
             properties: 数值类型的用户属性
         """
-        self.__add(distinct_id, account_id, 'user_add', None, properties)
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_add', properties_add=properties)
 
     def user_append(self, distinct_id=None, account_id=None, properties=None):
         """追加一个用户的某一个或者多个集合类型
@@ -150,7 +149,7 @@ class TGAnalytics(object):
             account_id: 账户 ID
             properties: 集合
         """
-        self.__add(distinct_id, account_id, 'user_append', None, properties)
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_append', properties_add=properties)
 
     def user_del(self, distinct_id=None, account_id=None):
         """删除用户
@@ -161,7 +160,7 @@ class TGAnalytics(object):
             distinct_id: 访客 ID
             account_id: 账户 ID
         """
-        self.__add(distinct_id, account_id, 'user_del')
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_del')
 
     def track(self, distinct_id=None, account_id=None, event_name=None, properties=None):
         """发送事件数据
@@ -178,19 +177,61 @@ class TGAnalytics(object):
         Raises:
             TGAIllegalDataException: 数据格式错误时会抛出此异常
         """
-        if not is_str(event_name):
-            raise TGAIllegalDataException('a string type event_name is required for track')
-
-        all_properties = {
-            '#lib': 'tga_python_sdk',
-            '#lib_version': __version__,
-        }
-        all_properties.update(self.__super_properties)
+        all_properties = self._public_track_add(event_name)
 
         if properties:
             all_properties.update(properties)
 
-        self.__add(distinct_id, account_id, 'track', event_name, all_properties)
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track', event_name=event_name,
+                   properties_add=all_properties)
+
+    def track_update(self, distinct_id=None, account_id=None, event_name=None, event_id=None, properties=None):
+        """发送可更新的事件数据
+
+        您可以调用 track_update 来上传可更新的事件，建议您根据先前梳理的文档来设置事件的属性以及发送信息的条件. 事件的名称只能以字母开头，可包含数字，字母和下划线“_”，
+        长度最大为 50 个字符，对字母大小写不敏感. 事件的属性是一个 dict 对象，其中每个元素代表一个属性.
+
+        Args:
+            distinct_id: 访客 ID
+            account_id: 账户 ID
+            event_name: 事件名称
+            event_id: 事件唯一ID
+            properties: 事件属性
+
+        Raises:
+            TGAIllegalDataException: 数据格式错误时会抛出此异常
+        """
+        all_properties = self._public_track_add(event_name)
+
+        if properties:
+            all_properties.update(properties)
+
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track_update', event_name=event_name,
+                   event_id=event_id, properties_add=all_properties)
+
+    def track_overwrite(self, distinct_id=None, account_id=None, event_name=None, event_id=None, properties=None):
+        """发送可覆盖的事件数据
+
+        您可以调用 track_overwrite 来上传可全部覆盖的事件，建议您根据先前梳理的文档来设置事件的属性以及发送信息的条件. 事件的名称只能以字母开头，可包含数字，字母和下划线“_”，
+        长度最大为 50 个字符，对字母大小写不敏感. 事件的属性是一个 dict 对象，其中每个元素代表一个属性.
+
+        Args:
+            distinct_id: 访客 ID
+            account_id: 账户 ID
+            event_name: 事件名称
+            event_id: 事件唯一ID
+            properties: 事件属性
+
+        Raises:
+            TGAIllegalDataException: 数据格式错误时会抛出此异常
+        """
+        all_properties = self._public_track_add(event_name)
+
+        if properties:
+            all_properties.update(properties)
+
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track_overwrite', event_name=event_name,
+                   event_id=event_id, properties_add=all_properties)
 
     def flush(self):
         """立即提交数据到相应的接收端
@@ -204,7 +245,19 @@ class TGAnalytics(object):
         """
         self.__consumer.close()
 
-    def __add(self, distinct_id, account_id, type, event_name=None, properties_add=None):
+    def _public_track_add(self, event_name):
+        if not is_str(event_name):
+            raise TGAIllegalDataException('a string type event_name is required for track')
+
+        all_properties = {
+            '#lib': 'tga_python_sdk',
+            '#lib_version': __version__,
+        }
+        all_properties.update(self.__super_properties)
+        return all_properties
+        pass
+
+    def __add(self, distinct_id, account_id, send_type, event_name=None, event_id=None, properties_add=None):
         if distinct_id is None and account_id is None:
             raise TGAException("Distinct_id and account_id must be set at least one")
 
@@ -213,12 +266,14 @@ class TGAnalytics(object):
         else:
             properties = {}
         data = {
-            '#type': type
+            '#type': send_type
         }
         if "#ip" in properties.keys():
             data['#ip'] = properties.get("#ip")
             del (properties['#ip'])
-
+        if "#first_check_id" in properties.keys():
+            data['#first_check_id'] = properties.get("#first_check_id")
+            del (properties['#first_check_id'])
         # 只支持UUID标准格式xxxxxxxx - xxxx - xxxx - xxxx - xxxxxxxxxxxx
         if "#uuid" in properties.keys():
             data['#uuid'] = str(properties['#uuid'])
@@ -226,19 +281,20 @@ class TGAnalytics(object):
         elif self.__enableUuid:
             data['#uuid'] = str(uuid.uuid1())
 
-        self.__assert_properties(type, properties)
+        self.__assert_properties(send_type, properties)
         td_time = properties.get("#time")
         data['#time'] = td_time
         del (properties['#time'])
 
         data['properties'] = properties
 
-        if 'track' == type:
+        if event_name is not None:
             data['#event_name'] = event_name
-
-        if distinct_id != None:
+        if event_id is not None:
+            data['#event_id'] = event_id
+        if distinct_id is not None:
             data['#distinct_id'] = distinct_id
-        if account_id != None:
+        if account_id is not None:
             data['#account_id'] = account_id
 
         self.__consumer.add(json.dumps(data))
@@ -268,7 +324,8 @@ class TGAnalytics(object):
                     raise TGAIllegalDataException(
                         "type[%s] property key must be a valid variable name. [key=%s]" % (action_type, str(key)))
 
-                if not is_str(value) and not is_int(value) and not isinstance(value, (float)) and not isinstance(value,(bool))\
+                if not is_str(value) and not is_int(value) and not isinstance(value, float) \
+                        and not isinstance(value, bool) \
                         and not isinstance(value, datetime.datetime) and not isinstance(value, datetime.date) \
                         and not isinstance(value, list):
                     raise TGAIllegalDataException(
@@ -298,7 +355,10 @@ class TGAnalytics(object):
     def clear_super_properties(self):
         """删除所有已设置的事件公共属性
         """
-        self.__super_properties = {}
+        self.__super_properties = {
+            '#lib': 'tga_python_sdk',
+            '#lib_version': __version__,
+        }
 
     def set_super_properties(self, super_properties):
         """设置公共事件属性
@@ -380,7 +440,6 @@ class LoggingConsumer(object):
     创建指定文件存放目录的 LoggingConsumer, 将数据使用 logging 库输出到指定路径. 同时，需将 LogBus 的监听文件夹地址
     设置为此处的地址，即可使用LogBus进行数据的监听上传.
     """
-
     _mutex = queue.Queue()
     _mutex.put(1)
 
@@ -412,7 +471,7 @@ class LoggingConsumer(object):
             LoggingConsumer._FileWriter._writeMutex.get(block=True, timeout=None)
             try:
                 self._count = self._count - 1
-                if (self._count == 0):
+                if self._count == 0:
                     self._file.close()
                     del LoggingConsumer._FileWriter._writers[self._filename]
             finally:
@@ -572,7 +631,7 @@ class BatchConsumer(object):
                 msg = self.__message_channel[:self.__batch]
             else:
                 msg = self.__message_channel[:len(self.__message_channel)]
-            self.__http_service.send('[' + ','.join(msg) + ']')
+            self.__http_service.send('[' + ','.join(msg) + ']', str(len(msg)))
             self.__last_flush = time.time()
             self.__message_channel = self.__message_channel[len(msg):]
         except TGAException as e:
@@ -648,7 +707,7 @@ class AsyncBatchConsumer(object):
         if len(flush_buffer) > 0:
             for i in range(3):  # 网络异常情况下重试 3 次
                 try:
-                    self.__http_service.send('[' + ','.join(flush_buffer) + ']')
+                    self.__http_service.send('[' + ','.join(flush_buffer) + ']', str(len(flush_buffer)))
                     return True
                 except TGANetworkException:
                     pass
@@ -689,6 +748,18 @@ class AsyncBatchConsumer(object):
             self._finished_event.set()
 
 
+def _gzip_string(data):
+    try:
+        return gzip.compress(data)
+    except AttributeError:
+        import StringIO
+        buf = StringIO.StringIO()
+        fd = gzip.GzipFile(fileobj=buf, mode="w")
+        fd.write(data)
+        fd.close()
+        return buf.getvalue()
+
+
 class _HttpServices(object):
     """内部类，用于发送网络请求
 
@@ -701,25 +772,23 @@ class _HttpServices(object):
         self.timeout = timeout
         self.compress = True
 
-    def send(self, data):
+    def send(self, data, length):
         """使用 Requests 发送数据给服务器
 
         Args:
             data: 待发送的数据
+            length
 
         Raises:
             TGAIllegalDataException: 数据错误
             TGANetworkException: 网络错误
         """
-        headers = {}
-        headers['appid'] = self.appid
-        headers['user-agent'] = 'tga-python-sdk'
-        headers['version'] = __version__
-
+        headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': __version__,
+                   'TA-Integration-Count': length}
         try:
             compress_type = 'gzip'
             if self.compress:
-                data = self._gzip_string(data.encode("utf-8"))
+                data = _gzip_string(data.encode("utf-8"))
             else:
                 compress_type = 'none'
                 data = data.encode("utf-8")
@@ -736,17 +805,6 @@ class _HttpServices(object):
         except ConnectionError as e:
             time.sleep(0.5)
             raise TGANetworkException("Data transmission failed due to " + repr(e))
-
-    def _gzip_string(self, data):
-        try:
-            return gzip.compress(data)
-        except AttributeError:
-            import StringIO
-            buf = StringIO.StringIO()
-            fd = gzip.GzipFile(fileobj=buf, mode="w")
-            fd.write(data)
-            fd.close()
-            return buf.getvalue()
 
 
 class DebugConsumer(object):

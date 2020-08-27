@@ -1,11 +1,13 @@
-from setuptools import setup,find_packages
+from setuptools import setup, find_packages
 import re
 from os import path
+
 
 def read(*paths):
     filename = path.join(path.abspath(path.dirname(__file__)), *paths)
     with open(filename, 'r') as f:
         return f.read()
+
 
 def find_version(*paths):
     contents = read(*paths)
@@ -13,6 +15,7 @@ def find_version(*paths):
     if not match:
         raise RuntimeError('Unable to find version string.')
     return match.group(1)
+
 
 setup(
     name='ThinkingDataSdk',

@@ -1,5 +1,6 @@
-from .sdk import *
-__all__ =[
+from tgasdk.sdk import *
+
+__all__ = [
     'TGAnalytics',
     'LoggingConsumer',
     'BatchConsumer',
