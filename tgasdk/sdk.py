@@ -1,6 +1,7 @@
 # encoding:utf-8
 
 from __future__ import unicode_literals
+
 import datetime
 import gzip
 import json
@@ -9,6 +10,7 @@ import re
 import threading
 import time
 import uuid
+
 import requests
 from requests import ConnectionError
 
@@ -67,8 +69,11 @@ class TGANetworkException(TGAException):
     pass
 
 
-__version__ = '1.4.0'
+__version__ = '1.8.0'
 
+class DynamicSuperPropertiesTracker():
+    def get_dynamic_super_properties(self):
+        raise NotImplementedError
 
 class TGAnalytics(object):
     """TGAnalytics 实例是发送事件数据和用户属性数据的关键实例
@@ -76,7 +81,7 @@ class TGAnalytics(object):
 
     __NAME_PATTERN = re.compile(r"^(#[a-z][a-z0-9_]{0,49})|([a-z][a-z0-9_]{0,50})$", re.I)
 
-    def __init__(self, consumer, enableUuid=False):
+    def __init__(self, consumer, enable_uuid=False):
         """创建一个 TGAnalytics 实例
 
         TGAanlytics 需要与指定的 Consumer 一起使用，可以使用以下任何一种:
@@ -89,9 +94,13 @@ class TGAnalytics(object):
             consumer: 指定的 Consumer
         """
         self.__consumer = consumer
-        self.__enableUuid = enableUuid
+        self.__enableUuid = enable_uuid
         self.__super_properties = {}
         self.clear_super_properties()
+        self.__dynamic_super_properties_tracker = None;
+
+    def set_dynamic_super_properties_tracker(self, dynamic_super_properties_tracker):
+        self.__dynamic_super_properties_tracker = dynamic_super_properties_tracker
 
     def user_set(self, distinct_id=None, account_id=None, properties=None):
         """设置用户属性
@@ -151,6 +160,15 @@ class TGAnalytics(object):
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_append', properties_add=properties)
 
+    def user_uniq_append(self, distinct_id=None, account_id=None, properties=None):
+        """追加一个用户的某一个或者多个集合类型, 能对集合内数据去重
+        Args:
+            distinct_id: 访客 ID
+            account_id: 账户 ID
+            properties: 集合
+        """
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_uniq_append', properties_add=properties)
+
     def user_del(self, distinct_id=None, account_id=None):
         """删除用户
 
@@ -181,6 +199,34 @@ class TGAnalytics(object):
 
         if properties:
             all_properties.update(properties)
+
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track', event_name=event_name,
+                   properties_add=all_properties)
+
+    def track_first(self, distinct_id=None, account_id=None, event_name=None, first_check_id=None, properties=None):
+        """发送首次事件数据
+
+        您可以调用 track_first 来上传首次事件，建议您根据先前梳理的文档来设置事件的属性以及发送信息的条件. 事件的属性是一个 dict 对象，其中每个元素代表一个属性.
+        首次事件是指针对某个设备或者其他维度的 ID，只会记录一次的事件. 例如在一些场景下，您可能希望记录在某个设备上第一次发生的事件，则可以用首次事件来上报数据.
+        Args:
+            distinct_id: 访客 ID
+            account_id: 账户 ID
+            event_name: 事件名称
+            first_check_id: 首次事件维度ID
+            properties: 事件属性
+
+        Raises:
+            TGAIllegalDataException: 数据格式错误时会抛出此异常
+        """
+        all_properties = self._public_track_add(event_name)
+
+        if properties:
+            all_properties.update(properties)
+
+        if first_check_id:
+            all_properties.update({'#first_check_id':first_check_id})
+        else:
+            all_properties.update({'#first_check_id':distinct_id})
 
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track', event_name=event_name,
                    properties_add=all_properties)
@@ -254,6 +300,8 @@ class TGAnalytics(object):
             '#lib_version': __version__,
         }
         all_properties.update(self.__super_properties)
+        if self.__dynamic_super_properties_tracker:
+            all_properties.update(self.__dynamic_super_properties_tracker.get_dynamic_super_properties())
         return all_properties
         pass
 
@@ -280,6 +328,9 @@ class TGAnalytics(object):
             del (properties['#uuid'])
         elif self.__enableUuid:
             data['#uuid'] = str(uuid.uuid1())
+        if "#app_id" in properties.keys():
+            data['#app_id'] = properties.get("#app_id")
+            del (properties['#app_id'])
 
         self.__assert_properties(send_type, properties)
         td_time = properties.get("#time")
@@ -324,13 +375,6 @@ class TGAnalytics(object):
                     raise TGAIllegalDataException(
                         "type[%s] property key must be a valid variable name. [key=%s]" % (action_type, str(key)))
 
-                if not is_str(value) and not is_int(value) and not isinstance(value, float) \
-                        and not isinstance(value, bool) \
-                        and not isinstance(value, datetime.datetime) and not isinstance(value, datetime.date) \
-                        and not isinstance(value, list):
-                    raise TGAIllegalDataException(
-                        "property value must be a str/int/float/bool/datetime/date/list. [value=%s]" % type(value))
-
                 if 'user_add' == action_type.lower() and not self.__number(value) and not key.startswith('#'):
                     raise TGAIllegalDataException('user_add properties must be number type')
 
@@ -344,6 +388,13 @@ class TGAnalytics(object):
                         if isinstance(lvalue, datetime.datetime):
                             value[i] = lvalue.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                         i += 1
+
+                if isinstance(value, dict):
+                    for k, v in value.items():
+                        if isinstance(v, datetime.datetime):
+                            value[k] = v.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                        elif isinstance(v, datetime.date):
+                            value[k] = v.strftime('%Y-%m-%d')
 
     def __number(self, s):
         if is_int(s):
@@ -378,31 +429,31 @@ if os.name == 'nt':
 
     def _lock(file_):
         try:
-            savepos = file_.tell()
+            save_pos = file_.tell()
             file_.seek(0)
             try:
                 msvcrt.locking(file_.fileno(), msvcrt.LK_LOCK, 1)
             except IOError as e:
                 raise TGAException(e)
             finally:
-                if savepos:
-                    file_.seek(savepos)
+                if save_pos:
+                    file_.seek(save_pos)
         except IOError as e:
             raise TGAException(e)
 
 
     def _unlock(file_):
         try:
-            savepos = file_.tell()
-            if savepos:
+            save_pos = file_.tell()
+            if save_pos:
                 file_.seek(0)
             try:
                 msvcrt.locking(file_.fileno(), msvcrt.LK_UNLCK, 1)
             except IOError as e:
                 raise TGAException(e)
             finally:
-                if savepos:
-                    file_.seek(savepos)
+                if save_pos:
+                    file_.seek(save_pos)
         except IOError as e:
             raise TGAException(e)
 elif os.name == 'posix':
@@ -433,7 +484,6 @@ class _TAFileLock(object):
     def __exit__(self, t, v, tb):
         _unlock(self._file_handler)
 
-
 class LoggingConsumer(object):
     """数据批量实时写入本地文件
 
@@ -449,7 +499,7 @@ class LoggingConsumer(object):
         _writeMutex.put(1)
 
         @classmethod
-        def getInstance(cls, filename):
+        def instance(cls, filename):
             cls._writeMutex.get(block=True, timeout=None)
             try:
                 if filename in cls._writers.keys():
@@ -477,7 +527,7 @@ class LoggingConsumer(object):
             finally:
                 LoggingConsumer._FileWriter._writeMutex.put(1)
 
-        def isValid(self, filename):
+        def is_valid(self, filename):
             return self._filename == filename
 
         def write(self, messages):
@@ -488,9 +538,9 @@ class LoggingConsumer(object):
                 self._file.flush()
 
     @classmethod
-    def construct_filename(cls, directory, date_suffix, file_size, file_suffix):
-        filename = file_suffix + ".log." + date_suffix \
-            if file_suffix is not None else "log." + date_suffix
+    def construct_filename(cls, directory, date_suffix, file_size, file_prefix):
+        filename = file_prefix + ".log." + date_suffix \
+            if file_prefix is not None else "log." + date_suffix
 
         if file_size > 0:
             count = 0
@@ -511,22 +561,24 @@ class LoggingConsumer(object):
         return False
 
     @classmethod
-    def unlockLoggingConsumer(cls):
+    def unlock_logging_consumer(cls):
         cls._mutex.put(1)
 
     @classmethod
-    def lockLoggingConsumer(cls):
+    def lock_logging_consumer(cls):
         cls._mutex.get(block=True, timeout=None)
 
-    def __init__(self, log_directory, log_size=0, bufferSize=8192, rotate_mode=ROTATE_MODE.DAILY, file_suffix=None):
+    def __init__(self, log_directory, log_size=0, buffer_size=5, rotate_mode=ROTATE_MODE.DAILY, file_prefix=None):
         """创建指定日志文件目录的 LoggingConsumer
 
         Args:
             log_directory: 日志保存目录
             log_size: 单个日志文件的大小, 单位 MB, log_size <= 0 表示不限制单个文件大小
-            bufferSize: 每次写入文件的大小, 单位 Byte, 默认 8K
+            buffer_size: 每次写入文件数据量, 默认 5 条写入一次
             rotate_mode: 日志切分模式，默认按天切分
         """
+        if not os.path.exists(log_directory):
+            os.makedirs(log_directory)
         self.log_directory = log_directory  # log文件保存的目录
         self.sdf = '%Y-%m-%d-%H' if rotate_mode == ROTATE_MODE.HOURLY else '%Y-%m-%d'
         self.suffix = datetime.datetime.now().strftime(self.sdf)
@@ -535,55 +587,54 @@ class LoggingConsumer(object):
             self.log_directory = self.log_directory + "/"
 
         self._buffer = []
-        self._bufferSize = bufferSize
-        self.file_suffix = file_suffix
-        self.lockLoggingConsumer()
-        filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize, self.file_suffix)
-        self._writer = LoggingConsumer._FileWriter.getInstance(filename)
-        self.unlockLoggingConsumer()
+        self._buffer_size = buffer_size
+        self._file_prefix = file_prefix
+        self.lock_logging_consumer()
+        filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize,
+                                                      self._file_prefix)
+        self._writer = LoggingConsumer._FileWriter.instance(filename)
+        self.unlock_logging_consumer()
 
     def add(self, msg):
         messages = None
-        self.lockLoggingConsumer()
+        self.lock_logging_consumer()
         self._buffer.append(msg)
-        if len(self._buffer) > self._bufferSize:
+        if len(self._buffer) > self._buffer_size:
             messages = self._buffer
-            date_suffix = datetime.datetime.now().strftime(self.sdf)
-            if self.suffix != date_suffix:
-                self.suffix = date_suffix
-                self._split_log_suffix = 0
-            filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize,
-                                                          self.file_suffix)
-            if not self._writer.isValid(filename):
-                self._writer.close()
-                self._writer = LoggingConsumer._FileWriter.getInstance(filename)
+            self.refresh_writer()
             self._buffer = []
         if messages:
             self._writer.write(messages)
-        self.unlockLoggingConsumer()
+        self.unlock_logging_consumer()
 
-    def flushWithClose(self, is_close):
+    def flush_with_close(self, is_close):
         messages = None
-        self.lockLoggingConsumer()
+        self.lock_logging_consumer()
         if len(self._buffer) > 0:
             messages = self._buffer
-            filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize,
-                                                          self.file_suffix)
-            if not self._writer.isValid(filename):
-                self._writer.close()
-                self._writer = LoggingConsumer._FileWriter.getInstance(filename)
+            self.refresh_writer()
             self._buffer = []
         if messages:
             self._writer.write(messages)
         if is_close:
             self._writer.close()
-        self.unlockLoggingConsumer()
+        self.unlock_logging_consumer()
+
+    def refresh_writer(self):
+        date_suffix = datetime.datetime.now().strftime(self.sdf)
+        if self.suffix != date_suffix:
+            self.suffix = date_suffix
+        filename = LoggingConsumer.construct_filename(self.log_directory, self.suffix, self._fileSize,
+                                                      self._file_prefix)
+        if not self._writer.is_valid(filename):
+            self._writer.close()
+            self._writer = LoggingConsumer._FileWriter.instance(filename)
 
     def flush(self):
-        self.flushWithClose(False)
+        self.flush_with_close(False)
 
     def close(self):
-        self.flushWithClose(True)
+        self.flush_with_close(True)
 
 
 class BatchConsumer(object):
@@ -597,8 +648,9 @@ class BatchConsumer(object):
     2. 数据发送间隔超过预定义的最大时间, 默认为 3 秒
     """
     _batchlock = threading.RLock()
+    _cachelock = threading.RLock()
 
-    def __init__(self, server_uri, appid, batch=20, timeout=30000, interval=3, compress=True):
+    def __init__(self, server_uri, appid, batch=20, timeout=30000, interval=3, compress=True, max_cache_size=50):
         """创建 BatchConsumer
 
         Args:
@@ -611,6 +663,8 @@ class BatchConsumer(object):
         self.__interval = interval
         self.__batch = min(batch, 200)
         self.__message_channel = []
+        self.__max_cache_size = max_cache_size
+        self.__cache_buffer = []
         self.__last_flush = time.time()
         server_url = urlparse(server_uri)
         self.__http_service = _HttpServices(server_url._replace(path='/sync_server').geturl(), appid, timeout)
@@ -618,31 +672,54 @@ class BatchConsumer(object):
 
     def add(self, msg):
         self._batchlock.acquire()
-        self.__message_channel.append(msg)
-        if len(self.__message_channel) >= self.__batch or (
-                time.time() - self.__last_flush >= self.__interval and len(self.__message_channel) > 0):
-            self.flush()
-        self._batchlock.release()
+        try:
+            self.__message_channel.append(msg)
+        finally:
+            self._batchlock.release()
+        if len(self.__message_channel) >= self.__batch \
+                or len(self.__cache_buffer) > 0:
+            self.flush_once()
 
     def flush(self, throw_exception=True):
+        while len(self.__cache_buffer) > 0 or len(self.__message_channel) > 0:
+            try:
+                self.flush_once(throw_exception)
+            except TGAIllegalDataException:
+                continue
+
+    def flush_once(self, throw_exception=True):
+        if len(self.__message_channel) == 0 and len(self.__cache_buffer) == 0:
+            return
+
+        self._cachelock.acquire()
         self._batchlock.acquire()
         try:
-            if len(self.__message_channel) >= self.__batch:
-                msg = self.__message_channel[:self.__batch]
-            else:
-                msg = self.__message_channel[:len(self.__message_channel)]
+            try:
+                if len(self.__message_channel) == 0 and len(self.__cache_buffer) == 0:
+                    return
+                if len(self.__cache_buffer) == 0 or len(self.__message_channel) >= self.__batch:
+                    self.__cache_buffer.append(self.__message_channel)
+                    self.__message_channel = []
+            finally:
+                self._batchlock.release()
+            msg = self.__cache_buffer[0]
             self.__http_service.send('[' + ','.join(msg) + ']', str(len(msg)))
             self.__last_flush = time.time()
-            self.__message_channel = self.__message_channel[len(msg):]
-        except TGAException as e:
+            self.__cache_buffer = self.__cache_buffer[1:]
+        except TGANetworkException as e:
+            if throw_exception:
+                raise e
+        except TGAIllegalDataException as e:
+            self.__cache_buffer = self.__cache_buffer[1:]
             if throw_exception:
                 raise e
         finally:
-            self._batchlock.release()
+            if len(self.__cache_buffer) > self.__max_cache_size:
+                self.__cache_buffer = self.__cache_buffer[1:]
+            self._cachelock.release()
 
     def close(self):
-        while len(self.__message_channel) > 0:
-            self.flush()
+        self.flush()
 
     pass
 
