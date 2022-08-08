@@ -90,11 +90,11 @@ def  assert_properties(action_type, properties):
                     raise TGAIllegalDataException('user_add properties must be number type')
                     
 
-Version = '2.0.0'
+__version__  = '2.0.0'
 is_print = False
 def log(msg=None):
     if (msg is not None and is_print ) :
-        print('[ThinkingAnalytics-Python SDK V%s]-%s' %(Version,msg))
+        print('[ThinkingAnalytics-Python SDK V%s]-%s' %(__version__,msg))
 
 
 class TGAException(Exception):
@@ -353,7 +353,7 @@ class TGAnalytics(object):
 
         all_properties = {
             '#lib': 'tga_python_sdk',
-            '#lib_version': Version,
+            '#lib_version': __version__ ,
         }
         all_properties.update(self.__super_properties)
         if self.__dynamic_super_properties_tracker:
@@ -409,7 +409,7 @@ class TGAnalytics(object):
         """
         self.__super_properties = {
             '#lib': 'tga_python_sdk',
-            '#lib_version': Version,
+            '#lib_version': __version__ ,
         }
 
     def set_super_properties(self, super_properties):
@@ -864,7 +864,7 @@ class _HttpServices(object):
             TGAIllegalDataException: 数据错误
             TGANetworkException: 网络错误
         """
-        headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': Version,
+        headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': __version__ ,
                    'TA-Integration-Count': length}
         try:
             compress_type = 'gzip'
