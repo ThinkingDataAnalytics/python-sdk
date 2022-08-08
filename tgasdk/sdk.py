@@ -90,7 +90,7 @@ def  assert_properties(action_type, properties):
                     raise TGAIllegalDataException('user_add properties must be number type')
                     
 
-__version__  = '2.0.0'
+__version__ = '2.0.0'
 is_print = False
 def log(msg=None):
     if (msg is not None and is_print ) :
@@ -353,7 +353,7 @@ class TGAnalytics(object):
 
         all_properties = {
             '#lib': 'tga_python_sdk',
-            '#lib_version': __version__ ,
+            '#lib_version': __version__,
         }
         all_properties.update(self.__super_properties)
         if self.__dynamic_super_properties_tracker:
