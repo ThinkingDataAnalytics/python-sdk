@@ -1,6 +1,7 @@
 # encoding:utf-8
 
 from __future__ import unicode_literals
+from ast import IsNot
 
 import datetime
 import gzip
@@ -10,9 +11,14 @@ import re
 import threading
 import time
 import uuid
+from matplotlib.colors import cnames
 
 import requests
 from requests import ConnectionError
+from sqlalchemy import false
+
+
+__NAME_PATTERN = re.compile(r"^[#a-zA-Z][a-zA-Z0-9_]{0,49}$", re.I)
 
 try:
     import queue
@@ -49,6 +55,48 @@ except ImportError:
         HOURLY = 1
 
 
+def isNumber(s):
+    if is_int(s):
+         return True
+    if isinstance(s, float):
+        return True
+    return False
+
+
+def  assert_properties(action_type, properties):
+        if properties is not None:
+            if "#time" in properties.keys():
+                try:
+                    time_temp = properties.get('#time')
+                    if isinstance(time_temp, datetime.datetime) or isinstance(time_temp, datetime.date):
+                        pass
+                    else:
+                        raise TGAIllegalDataException('Value of #time should be datetime.datetime or datetime.date')
+                except Exception as e:
+                    raise TGAIllegalDataException(e)
+
+            for key, value in properties.items():
+                if not is_str(key):
+                    raise TGAIllegalDataException("Property key must be a str. [key=%s]" % str(key))
+
+                if value is None:
+                    continue
+
+                if not __NAME_PATTERN.match(key):
+                    raise TGAIllegalDataException(
+                        "type[%s] property key must be a valid variable name. [key=%s]" % (action_type, str(key)))
+
+                if 'user_add' == action_type.lower() and not isNumber(value) and not key.startswith('#'):
+                    raise TGAIllegalDataException('user_add properties must be number type')
+                    
+
+Version = '2.0.0'
+is_print = False
+def log(msg=None):
+    if (msg is not None and is_print ) :
+        print('[ThinkingAnalytics-Python SDK V%s]-%s' %(Version,msg))
+
+
 class TGAException(Exception):
     pass
 
@@ -69,31 +117,48 @@ class TGANetworkException(TGAException):
     pass
 
 
-__version__ = '1.8.0'
 
 class DynamicSuperPropertiesTracker():
     def get_dynamic_super_properties(self):
         raise NotImplementedError
 
+class TADateTimeSerializer(json.JSONEncoder):
+        """
+        实现 date 和 datetime 类型的自动转化
+        """
+        def default(self, obj):
+            if isinstance(obj, datetime.datetime):
+                head_fmt = "%Y-%m-%d %H:%M:%S"
+                return obj.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            elif isinstance(obj, datetime.date):
+                fmt = '%Y-%m-%d'
+                return obj.strftime(fmt)
+            return json.JSONEncoder.default(self, obj)
+
 class TGAnalytics(object):
     """TGAnalytics 实例是发送事件数据和用户属性数据的关键实例
     """
+    __strict = False
 
-    __NAME_PATTERN = re.compile(r"^(#[a-z][a-z0-9_]{0,49})|([a-z][a-z0-9_]{0,50})$", re.I)
-
-    def __init__(self, consumer, enable_uuid=False):
+    def __init__(self, consumer, enable_uuid=False,strict=None):
         """创建一个 TGAnalytics 实例
 
         TGAanlytics 需要与指定的 Consumer 一起使用，可以使用以下任何一种:
         - LoggingConsumer: 批量实时写本地文件，并与 LogBus 搭配
         - BatchConsumer: 批量实时地向TA服务器传输数据（同步阻塞），不需要搭配传输工具
         - AsyncBatchConsumer: 批量实时地向TA服务器传输数据（异步非阻塞），不需要搭配传输工具
-        - DebugConsumer: 逐条发送数据，并对数据格式做严格校验
+        - DebugConsumer: 逐条发送数据，并对数据格式做严格校验  
 
         Args:
             consumer: 指定的 Consumer
         """
+     
         self.__consumer = consumer
+        if isinstance(consumer,DebugConsumer):
+            self.__strict = True
+        if strict != None:
+            self.__strict = strict
+        
         self.__enableUuid = enable_uuid
         self.__super_properties = {}
         self.clear_super_properties()
@@ -146,7 +211,7 @@ class TGAnalytics(object):
 
         Args:
             distinct_id: 访客 ID
-            account_id: 账户 ID
+            account_id: 账户 ID  
             properties: 数值类型的用户属性
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_add', properties_add=properties)
@@ -195,11 +260,7 @@ class TGAnalytics(object):
         Raises:
             TGAIllegalDataException: 数据格式错误时会抛出此异常
         """
-        all_properties = self._public_track_add(event_name)
-
-        if properties:
-            all_properties.update(properties)
-
+        all_properties = self._public_track_add(event_name,properties)
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track', event_name=event_name,
                    properties_add=all_properties)
 
@@ -218,17 +279,15 @@ class TGAnalytics(object):
         Raises:
             TGAIllegalDataException: 数据格式错误时会抛出此异常
         """
-        all_properties = self._public_track_add(event_name)
+        all_properties = self._public_track_add(event_name,properties)
+        if first_check_id is None and self.__strict:
+            raise TGAException("first_check_id must be set")
+        # if first_check_id:
+        #     all_properties.update({'#first_check_id':first_check_id})
+        # else:
+        #     all_properties.update({'#first_check_id':distinct_id})
 
-        if properties:
-            all_properties.update(properties)
-
-        if first_check_id:
-            all_properties.update({'#first_check_id':first_check_id})
-        else:
-            all_properties.update({'#first_check_id':distinct_id})
-
-        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track', event_name=event_name,
+        self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track',event_id=first_check_id,event_name=event_name,
                    properties_add=all_properties)
 
     def track_update(self, distinct_id=None, account_id=None, event_name=None, event_id=None, properties=None):
@@ -247,11 +306,10 @@ class TGAnalytics(object):
         Raises:
             TGAIllegalDataException: 数据格式错误时会抛出此异常
         """
-        all_properties = self._public_track_add(event_name)
+        if event_id is None and self.__strict:
+            raise TGAException("event_id must be set")
 
-        if properties:
-            all_properties.update(properties)
-
+        all_properties = self._public_track_add(event_name,properties)
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track_update', event_name=event_name,
                    event_id=event_id, properties_add=all_properties)
 
@@ -271,11 +329,9 @@ class TGAnalytics(object):
         Raises:
             TGAIllegalDataException: 数据格式错误时会抛出此异常
         """
-        all_properties = self._public_track_add(event_name)
-
-        if properties:
-            all_properties.update(properties)
-
+        if event_id is None and self.__strict:
+                raise TGAException("event_id must be set")
+        all_properties = self._public_track_add(event_name,properties)
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track_overwrite', event_name=event_name,
                    event_id=event_id, properties_add=all_properties)
 
@@ -291,124 +347,69 @@ class TGAnalytics(object):
         """
         self.__consumer.close()
 
-    def _public_track_add(self, event_name):
+    def _public_track_add(self,event_name,properties):
         if not is_str(event_name):
             raise TGAIllegalDataException('a string type event_name is required for track')
 
         all_properties = {
             '#lib': 'tga_python_sdk',
-            '#lib_version': __version__,
+            '#lib_version': Version,
         }
         all_properties.update(self.__super_properties)
         if self.__dynamic_super_properties_tracker:
             all_properties.update(self.__dynamic_super_properties_tracker.get_dynamic_super_properties())
+        if properties:
+            all_properties.update(properties)
         return all_properties
         pass
 
     def __add(self, distinct_id, account_id, send_type, event_name=None, event_id=None, properties_add=None):
         if distinct_id is None and account_id is None:
             raise TGAException("Distinct_id and account_id must be set at least one")
+        data = {'#type': send_type}    
+        if send_type.find("track") !=-1 and event_id is not None:
+            if send_type == "track":
+              self.__buildData(data,'#first_check_id',event_id) 
+            else: 
+              self.__buildData(data,'#event_id',event_id)    
 
         if properties_add:
             properties = properties_add.copy()
         else:
             properties = {}
-        data = {
-            '#type': send_type
-        }
-        if "#ip" in properties.keys():
-            data['#ip'] = properties.get("#ip")
-            del (properties['#ip'])
-        if "#first_check_id" in properties.keys():
-            data['#first_check_id'] = properties.get("#first_check_id")
-            del (properties['#first_check_id'])
+        self.__movePresetProperties(["#ip","#first_check_id","#app_id","#time",'#uuid'],data,properties)
+        if self.__strict == True:
+            assert_properties(send_type, properties)
         # 只支持UUID标准格式xxxxxxxx - xxxx - xxxx - xxxx - xxxxxxxxxxxx
-        if "#uuid" in properties.keys():
-            data['#uuid'] = str(properties['#uuid'])
-            del (properties['#uuid'])
-        elif self.__enableUuid:
+        if ( self.__enableUuid and "#uuid" not in data.keys() ):
             data['#uuid'] = str(uuid.uuid1())
-        if "#app_id" in properties.keys():
-            data['#app_id'] = properties.get("#app_id")
-            del (properties['#app_id'])
-
-        self.__assert_properties(send_type, properties)
-        td_time = properties.get("#time")
-        data['#time'] = td_time
-        del (properties['#time'])
-
+        if '#time' not in data:
+            data['#time'] = datetime.datetime.now()
+        self.__buildData(data,'#event_name',event_name)
+        self.__buildData(data,'#distinct_id',distinct_id)
+        self.__buildData(data,'#account_id',account_id)    
         data['properties'] = properties
+        content = json.dumps(data,separators=(',', ':'),cls=TADateTimeSerializer)
+        log("collect data={}".format(content))
+        self.__consumer.add(content)
+        
+    def __buildData(self,data,key,value):
+         if value is not None:
+                data[key] = value
 
-        if event_name is not None:
-            data['#event_name'] = event_name
-        if event_id is not None:
-            data['#event_id'] = event_id
-        if distinct_id is not None:
-            data['#distinct_id'] = distinct_id
-        if account_id is not None:
-            data['#account_id'] = account_id
+    def __movePresetProperties(self,keys,data,properties):
+        for key in keys:
+            if key in properties.keys():
+                data[key] = properties.get(key)
+                del (properties[key])
 
-        self.__consumer.add(json.dumps(data))
-
-    def __assert_properties(self, action_type, properties):
-        if properties is not None:
-            if "#time" not in properties.keys():
-                properties['#time'] = datetime.datetime.now()
-            else:
-                try:
-                    time_temp = properties.get('#time')
-                    if isinstance(time_temp, datetime.datetime) or isinstance(time_temp, datetime.date):
-                        pass
-                    else:
-                        raise TGAIllegalDataException('Value of #time should be datetime.datetime or datetime.date')
-                except Exception as e:
-                    raise TGAIllegalDataException(e)
-
-            for key, value in properties.items():
-                if not is_str(key):
-                    raise TGAIllegalDataException("Property key must be a str. [key=%s]" % str(key))
-
-                if value is None:
-                    continue
-
-                if not self.__NAME_PATTERN.match(key):
-                    raise TGAIllegalDataException(
-                        "type[%s] property key must be a valid variable name. [key=%s]" % (action_type, str(key)))
-
-                if 'user_add' == action_type.lower() and not self.__number(value) and not key.startswith('#'):
-                    raise TGAIllegalDataException('user_add properties must be number type')
-
-                if isinstance(value, datetime.datetime):
-                    properties[key] = value.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                elif isinstance(value, datetime.date):
-                    properties[key] = value.strftime('%Y-%m-%d')
-                if isinstance(value, list):
-                    i = 0
-                    for lvalue in value:
-                        if isinstance(lvalue, datetime.datetime):
-                            value[i] = lvalue.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                        i += 1
-
-                if isinstance(value, dict):
-                    for k, v in value.items():
-                        if isinstance(v, datetime.datetime):
-                            value[k] = v.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                        elif isinstance(v, datetime.date):
-                            value[k] = v.strftime('%Y-%m-%d')
-
-    def __number(self, s):
-        if is_int(s):
-            return True
-        if isinstance(s, float):
-            return True
-        return False
 
     def clear_super_properties(self):
         """删除所有已设置的事件公共属性
         """
         self.__super_properties = {
             '#lib': 'tga_python_sdk',
-            '#lib_version': __version__,
+            '#lib_version': Version,
         }
 
     def set_super_properties(self, super_properties):
@@ -421,8 +422,12 @@ class TGAnalytics(object):
             super_properties 公共属性
         """
         self.__super_properties.update(super_properties)
-
-
+    
+    @staticmethod 
+    def enableLog(isPrint=False):
+        global is_print
+        is_print = isPrint
+    
 if os.name == 'nt':
     import msvcrt
 
@@ -471,7 +476,6 @@ elif os.name == 'posix':
         fcntl.flock(file_.fileno(), fcntl.LOCK_UN)
 else:
     raise TGAException("Python SDK is defined for NT and POSIX system.")
-
 
 class _TAFileLock(object):
     def __init__(self, file_handler):
@@ -765,6 +769,7 @@ class AsyncBatchConsumer(object):
         self.__flushing_thread.flush()
 
     def close(self):
+        self.flush()
         self.__flushing_thread.stop()
         while not self.__queue.empty():
             self._perform_request()
@@ -806,7 +811,6 @@ class AsyncBatchConsumer(object):
 
         def stop(self):
             """停止线程
-
             退出时需调用此方法，以保证线程安全结束.
             """
             self._stop_event.set()
@@ -860,7 +864,7 @@ class _HttpServices(object):
             TGAIllegalDataException: 数据错误
             TGANetworkException: 网络错误
         """
-        headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': __version__,
+        headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': Version,
                    'TA-Integration-Count': length}
         try:
             compress_type = 'gzip'
@@ -873,11 +877,13 @@ class _HttpServices(object):
             response = requests.post(self.url, data=data, headers=headers, timeout=self.timeout)
             if response.status_code == 200:
                 responseData = json.loads(response.text)
+                log('response={}'.format(responseData))
                 if responseData["code"] == 0:
                     return True
                 else:
                     raise TGAIllegalDataException("Unexpected result code: " + str(responseData["code"]))
             else:
+                log('response={}'.format(response.status_code))
                 raise TGANetworkException("Unexpected Http status code " + str(response.status_code))
         except ConnectionError as e:
             time.sleep(0.5)
@@ -905,6 +911,8 @@ class DebugConsumer(object):
         self.__appid = appid
         self.__timeout = timeout
         self.__writer_data = write_data
+        TGAnalytics.enableLog(True)
+
 
     def add(self, msg):
         try:
@@ -916,6 +924,7 @@ class DebugConsumer(object):
                                      timeout=self.__timeout)
             if response.status_code == 200:
                 responseData = json.loads(response.text)
+                log('response={}'.format(responseData))
                 if responseData["errorLevel"] == 0:
                     return True
                 else:
@@ -931,3 +940,5 @@ class DebugConsumer(object):
 
     def close(self):
         pass
+
+    
