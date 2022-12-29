@@ -178,8 +178,6 @@ class BasicTest(unittest.TestCase):
         self.sdkTest.addCase(track_overwrite)
         self.sdkTest.addCase(track_first)
         
-
-    #测试属性key的判定方法是否有效
     def test_assert_key_value(self):
         try:
             assert_properties("track",{"123":'123'});
@@ -270,7 +268,7 @@ class BasicTest(unittest.TestCase):
         self.sdkTest.addVerify(empty_verify)
         self.sdkTest.run()
     
-    #测试type是否正确
+ 
     def test_type(self):
         self.sdkTest.reset();
         def verify(result):
@@ -282,7 +280,7 @@ class BasicTest(unittest.TestCase):
         self.sdkTest.run()
         pass
 
-    #测试时间属性处理
+
     def test_time(self):
         self.sdkTest.reset()
         eventTime = datetime.datetime.utcnow()
@@ -310,7 +308,6 @@ class BasicTest(unittest.TestCase):
         self.sdkTest.addVerify(user_verify)
         self.sdkTest.run()
 
-    #测试预制属性处理
     def test_preset_properties(self):
         self.sdkTest.reset()
         eventTime = datetime.datetime.utcnow()

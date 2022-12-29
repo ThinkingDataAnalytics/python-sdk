@@ -6,7 +6,6 @@ from tgasdk.sdk import TGAException, TGAnalytics, BatchConsumer, AsyncBatchConsu
     TGAIllegalDataException, \
     ROTATE_MODE
 TGAnalytics.enableLog(True)
-#填写数据上报地址和项目的appid
 tga =TGAnalytics(BatchConsumer("https://receiver-ta-demo.thinkingdata.cn", "appid"))
 distinct_id = "ABD"
 account_id = "11111"

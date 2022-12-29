@@ -90,7 +90,7 @@ def  assert_properties(action_type, properties):
                     raise TGAIllegalDataException('user_add properties must be number type')
                     
 
-__version__ = '2.0.0'
+__version__ = '2.1.0'
 is_print = False
 def log(msg=None):
     if (msg is not None and is_print ) :
@@ -102,18 +102,10 @@ class TGAException(Exception):
 
 
 class TGAIllegalDataException(TGAException):
-    """数据格式异常
-
-    在发送的数据格式有误时，SDK 会抛出此异常，用户应当捕获并处理.
-    """
     pass
 
 
 class TGANetworkException(TGAException):
-    """网络异常
-
-    在因为网络或者不可预知的问题导致数据无法发送时，SDK会抛出此异常，用户应当捕获并处理.
-    """
     pass
 
 
@@ -123,9 +115,7 @@ class DynamicSuperPropertiesTracker():
         raise NotImplementedError
 
 class TADateTimeSerializer(json.JSONEncoder):
-        """
-        实现 date 和 datetime 类型的自动转化
-        """
+       
         def default(self, obj):
             if isinstance(obj, datetime.datetime):
                 head_fmt = "%Y-%m-%d %H:%M:%S"
@@ -136,21 +126,16 @@ class TADateTimeSerializer(json.JSONEncoder):
             return json.JSONEncoder.default(self, obj)
 
 class TGAnalytics(object):
-    """TGAnalytics 实例是发送事件数据和用户属性数据的关键实例
-    """
     __strict = False
 
     def __init__(self, consumer, enable_uuid=False,strict=None):
-        """创建一个 TGAnalytics 实例
-
-        TGAanlytics 需要与指定的 Consumer 一起使用，可以使用以下任何一种:
-        - LoggingConsumer: 批量实时写本地文件，并与 LogBus 搭配
-        - BatchConsumer: 批量实时地向TA服务器传输数据（同步阻塞），不需要搭配传输工具
-        - AsyncBatchConsumer: 批量实时地向TA服务器传输数据（异步非阻塞），不需要搭配传输工具
-        - DebugConsumer: 逐条发送数据，并对数据格式做严格校验  
-
+        """
+        - LoggingConsumer: Write local files in batches
+        - BatchConsumer: Transfer data to the TE server in batches(synchronous blocking)
+        - AsyncBatchConsumer:Transfer data to the TE server in batches(asynchronous blocking)
+        - DebugConsumer: Send data one by one, and strictly verify the data format 
         Args:
-            consumer: 指定的 Consumer
+            consumer: required 
         """
      
         self.__consumer = consumer
@@ -168,116 +153,97 @@ class TGAnalytics(object):
         self.__dynamic_super_properties_tracker = dynamic_super_properties_tracker
 
     def user_set(self, distinct_id=None, account_id=None, properties=None):
-        """设置用户属性
-
-        对于一般的用户属性，您可以调用 user_set 来进行设置。使用该接口上传的属性将会覆盖原有的属性值，如果之前不存在该用户属性，
-        则会新建该用户属性，类型与传入属性的类型一致.
-
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            properties: dict 类型的用户属性
+            distinct_id: string
+            account_id: string
+            properties: dict 
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_set', properties_add=properties)
 
     def user_unset(self, distinct_id=None, account_id=None, properties=None):
         """
-        删除某个用户的用户属性
-        :param distinct_id:
-        :param account_id:
-        :param properties:
+        param distinct_id:string
+        param account_id:string
+        param properties:dic
         """
         if isinstance(properties, list):
             properties = dict((key, 0) for key in properties)
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_unset', properties_add=properties)
 
     def user_setOnce(self, distinct_id=None, account_id=None, properties=None):
-        """设置用户属性, 不覆盖已存在的用户属性
+        """
 
-        如果您要上传的用户属性只要设置一次，则可以调用 user_setOnce 来进行设置，当该属性之前已经有值的时候，将会忽略这条信息.
+        if the user property you want to upload only needs to be set once, you can call user_setOnce to set it. When the property has value before, this item will be ignored.
 
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            properties: dict 类型的用户属性
+            distinct_id: string
+            account_id: string
+            properties: dict
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_setOnce', properties_add=properties)
 
     def user_add(self, distinct_id=None, account_id=None, properties=None):
-        """对指定的数值类型的用户属性进行累加操作
-
-        当您要上传数值型的属性时，您可以调用 user_add 来对该属性进行累加操作. 如果该属性还未被设置，则会赋值0后再进行计算.
-        可传入负值，等同于相减操作.
-
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID  
-            properties: 数值类型的用户属性
+            distinct_id: string
+            account_id: string  
+            properties: dic
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_add', properties_add=properties)
 
     def user_append(self, distinct_id=None, account_id=None, properties=None):
-        """追加一个用户的某一个或者多个集合类型
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            properties: 集合
+            distinct_id:string
+            account_id: string
+            properties: dic
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_append', properties_add=properties)
 
     def user_uniq_append(self, distinct_id=None, account_id=None, properties=None):
-        """追加一个用户的某一个或者多个集合类型, 能对集合内数据去重
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            properties: 集合
+            distinct_id:string
+            account_id:string
+            properties: dic
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_uniq_append', properties_add=properties)
 
     def user_del(self, distinct_id=None, account_id=None):
-        """删除用户
-
-        如果您要删除某个用户，可以调用 user_del 将该用户删除。调用此函数后，将无法再查询该用户的用户属性, 但该用户产生的事件仍然可以被查询到.
-
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
+            distinct_id:string
+            account_id:string
         """
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='user_del')
 
     def track(self, distinct_id=None, account_id=None, event_name=None, properties=None):
-        """发送事件数据
-
-        您可以调用 track 来上传事件，建议您根据先前梳理的文档来设置事件的属性以及发送信息的条件. 事件的名称只能以字母开头，可包含数字，字母和下划线“_”，
-        长度最大为 50 个字符，对字母大小写不敏感. 事件的属性是一个 dict 对象，其中每个元素代表一个属性.
-
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            event_name: 事件名称
-            properties: 事件属性
+            distinct_id: string
+            account_id: string
+            event_name: string
+            properties: dic
 
         Raises:
-            TGAIllegalDataException: 数据格式错误时会抛出此异常
+            TGAIllegalDataException
         """
         all_properties = self._public_track_add(event_name,properties)
         self.__add(distinct_id=distinct_id, account_id=account_id, send_type='track', event_name=event_name,
                    properties_add=all_properties)
 
     def track_first(self, distinct_id=None, account_id=None, event_name=None, first_check_id=None, properties=None):
-        """发送首次事件数据
-
-        您可以调用 track_first 来上传首次事件，建议您根据先前梳理的文档来设置事件的属性以及发送信息的条件. 事件的属性是一个 dict 对象，其中每个元素代表一个属性.
-        首次事件是指针对某个设备或者其他维度的 ID，只会记录一次的事件. 例如在一些场景下，您可能希望记录在某个设备上第一次发生的事件，则可以用首次事件来上报数据.
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            event_name: 事件名称
-            first_check_id: 首次事件维度ID
-            properties: 事件属性
+            distinct_id: string
+            account_id: string
+            event_name:string
+            first_check_id: string
+            properties: dic
 
         Raises:
-            TGAIllegalDataException: 数据格式错误时会抛出此异常
+            TGAIllegalDataException
         """
         all_properties = self._public_track_add(event_name,properties)
         if first_check_id is None and self.__strict:
@@ -291,20 +257,16 @@ class TGAnalytics(object):
                    properties_add=all_properties)
 
     def track_update(self, distinct_id=None, account_id=None, event_name=None, event_id=None, properties=None):
-        """发送可更新的事件数据
-
-        您可以调用 track_update 来上传可更新的事件，建议您根据先前梳理的文档来设置事件的属性以及发送信息的条件. 事件的名称只能以字母开头，可包含数字，字母和下划线“_”，
-        长度最大为 50 个字符，对字母大小写不敏感. 事件的属性是一个 dict 对象，其中每个元素代表一个属性.
-
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            event_name: 事件名称
-            event_id: 事件唯一ID
-            properties: 事件属性
+            distinct_id: string
+            account_id: string
+            event_name: string
+            event_id: string
+            properties: dic
 
         Raises:
-            TGAIllegalDataException: 数据格式错误时会抛出此异常
+            TGAIllegalDataException
         """
         if event_id is None and self.__strict:
             raise TGAException("event_id must be set")
@@ -314,20 +276,16 @@ class TGAnalytics(object):
                    event_id=event_id, properties_add=all_properties)
 
     def track_overwrite(self, distinct_id=None, account_id=None, event_name=None, event_id=None, properties=None):
-        """发送可覆盖的事件数据
-
-        您可以调用 track_overwrite 来上传可全部覆盖的事件，建议您根据先前梳理的文档来设置事件的属性以及发送信息的条件. 事件的名称只能以字母开头，可包含数字，字母和下划线“_”，
-        长度最大为 50 个字符，对字母大小写不敏感. 事件的属性是一个 dict 对象，其中每个元素代表一个属性.
-
+        """
         Args:
-            distinct_id: 访客 ID
-            account_id: 账户 ID
-            event_name: 事件名称
-            event_id: 事件唯一ID
-            properties: 事件属性
+            distinct_id: string
+            account_id: string
+            event_name: string
+            event_id: string
+            properties: dic
 
         Raises:
-            TGAIllegalDataException: 数据格式错误时会抛出此异常
+            TGAIllegalDataException
         """
         if event_id is None and self.__strict:
                 raise TGAException("event_id must be set")
@@ -336,14 +294,14 @@ class TGAnalytics(object):
                    event_id=event_id, properties_add=all_properties)
 
     def flush(self):
-        """立即提交数据到相应的接收端
+        """
+        upload data immediately
         """
         self.__consumer.flush()
 
     def close(self):
-        """关闭并退出 sdk
-
-        请在退出前调用本接口，以避免缓存内的数据丢失
+        """
+        Please call this api before exiting to avoid data loss in the cache
         """
         self.__consumer.close()
 
@@ -405,21 +363,15 @@ class TGAnalytics(object):
 
 
     def clear_super_properties(self):
-        """删除所有已设置的事件公共属性
-        """
         self.__super_properties = {
             '#lib': 'tga_python_sdk',
             '#lib_version': __version__ ,
         }
 
     def set_super_properties(self, super_properties):
-        """设置公共事件属性
-
-        公共事件属性是所有事件中的属性属性，建议您在发送事件前，先设置公共事件属性. 当 track 的 properties 和
-        super properties 有相同的 key 时，track 的 properties 会覆盖公共事件属性的值.
-
+        """
         Args:
-            super_properties 公共属性
+            super_properties:string
         """
         self.__super_properties.update(super_properties)
     
@@ -489,10 +441,7 @@ class _TAFileLock(object):
         _unlock(self._file_handler)
 
 class LoggingConsumer(object):
-    """数据批量实时写入本地文件
-
-    创建指定文件存放目录的 LoggingConsumer, 将数据使用 logging 库输出到指定路径. 同时，需将 LogBus 的监听文件夹地址
-    设置为此处的地址，即可使用LogBus进行数据的监听上传.
+    """Write data to local files in batches
     """
     _mutex = queue.Queue()
     _mutex.put(1)
@@ -573,20 +522,19 @@ class LoggingConsumer(object):
         cls._mutex.get(block=True, timeout=None)
 
     def __init__(self, log_directory, log_size=0, buffer_size=5, rotate_mode=ROTATE_MODE.DAILY, file_prefix=None):
-        """创建指定日志文件目录的 LoggingConsumer
-
+        """
         Args:
-            log_directory: 日志保存目录
-            log_size: 单个日志文件的大小, 单位 MB, log_size <= 0 表示不限制单个文件大小
-            buffer_size: 每次写入文件数据量, 默认 5 条写入一次
-            rotate_mode: 日志切分模式，默认按天切分
+            log_directory: The directory where the log files are saved
+            log_size: The size of a single log file, in MB, log_size <= 0 means no limit on the size of a single file
+            buffer_size: The amount of data written to the file each time, the default is to write 5 pieces at a time
+            rotate_mode: Log splitting mode, by default splitting by day
         """
         if not os.path.exists(log_directory):
             os.makedirs(log_directory)
-        self.log_directory = log_directory  # log文件保存的目录
+        self.log_directory = log_directory
         self.sdf = '%Y-%m-%d-%H' if rotate_mode == ROTATE_MODE.HOURLY else '%Y-%m-%d'
         self.suffix = datetime.datetime.now().strftime(self.sdf)
-        self._fileSize = log_size  # 单个log文件的大小
+        self._fileSize = log_size
         if not self.log_directory.endswith("/"):
             self.log_directory = self.log_directory + "/"
 
@@ -642,27 +590,17 @@ class LoggingConsumer(object):
 
 
 class BatchConsumer(object):
-    """同步、批量地向 TA 服务器传输数据
-
-    通过指定接收端地址和 APP ID，可以同步的向 TA 服务器传输数据. 此 Consumer 不需要搭配传输工具,
-    但是存在网络不稳定等原因造成数据丢失的可能，因此不建议在生产环境中使用.
-
-    触发上报的时机为以下条件满足其中之一的时候:
-    1. 数据条数大于预定义的最大值, 默认为 20 条
-    2. 数据发送间隔超过预定义的最大时间, 默认为 3 秒
-    """
     _batchlock = threading.RLock()
     _cachelock = threading.RLock()
 
     def __init__(self, server_uri, appid, batch=20, timeout=30000, interval=3, compress=True, max_cache_size=50):
-        """创建 BatchConsumer
-
+        """
         Args:
-            server_uri: 服务器的 URL 地址
-            appid: 项目的 APP ID
-            batch: 指定触发上传的数据条数, 默认为 20 条, 最大 200 条
-            timeout: 请求的超时时间, 单位毫秒, 默认为 30000 ms
-            interval: 推送数据的最大时间间隔, 单位为秒, 默认为 3 秒
+            server_uri: 
+            appid: 
+            batch: Specify the number of data to trigger uploading, the default is 20, and the maximum is 200
+            timeout: Request timeout, in milliseconds, default is 30000 ms
+            interval: The maximum time interval for uploading data, in seconds, the default is 3 seconds
         """
         self.__interval = interval
         self.__batch = min(batch, 200)
@@ -729,29 +667,23 @@ class BatchConsumer(object):
 
 
 class AsyncBatchConsumer(object):
-    """异步、批量地向 TA 服务器发送数据的
-
-    AsyncBatchConsumer 使用独立的线程进行数据发送，当满足以下两个条件之一时触发数据上报:
-    1. 数据条数大于预定义的最大值, 默认为 20 条
-    2. 数据发送间隔超过预定义的最大时间, 默认为 3 秒
-    """
 
     def __init__(self, server_uri, appid, interval=3, flush_size=20, queue_size=100000):
-        """创建 AsyncBatchConsumer
+        """
 
         Args:
-            server_uri: 服务器的 URL 地址
-            appid: 项目的 APP ID
-            interval: 推送数据的最大时间间隔, 单位为秒, 默认为 3 秒
-            flush_size: 队列缓存的阈值，超过此值将立即进行发送
-            queue_size: 缓存队列的大小
+            server_uri:
+            appid: 
+            interval: The maximum time interval for uploading data, in seconds, the default is 3 seconds
+            flush_size: The threshold of the queue cache, if this value is exceeded, it will be sent immediately
+            queue_size: The size of the storage queue
         """
         server_url = urlparse(server_uri)
         self.__http_service = _HttpServices(server_url._replace(path='/sync_server').geturl(), appid, 30000)
         self.__batch = flush_size
         self.__queue = queue.Queue(queue_size)
 
-        # 初始化发送线程
+    
         self.__flushing_thread = self._AsyncFlushThread(self, interval)
         self.__flushing_thread.daemon = True
         self.__flushing_thread.start()
@@ -775,10 +707,7 @@ class AsyncBatchConsumer(object):
             self._perform_request()
 
     def _perform_request(self):
-        """同步的发送数据
-
-        仅用于内部调用, 用户不应当调用此方法.
-        """
+    
         flush_buffer = []
         while len(flush_buffer) < self.__batch:
             try:
@@ -787,7 +716,7 @@ class AsyncBatchConsumer(object):
                 break
 
         if len(flush_buffer) > 0:
-            for i in range(3):  # 网络异常情况下重试 3 次
+            for i in range(3):  #Retry 3 times in case of network exception
                 try:
                     self.__http_service.send('[' + ','.join(flush_buffer) + ']', str(len(flush_buffer)))
                     return True
@@ -810,20 +739,17 @@ class AsyncBatchConsumer(object):
             self._flush_event.set()
 
         def stop(self):
-            """停止线程
-            退出时需调用此方法，以保证线程安全结束.
+            """
+            Use of this method needs to be adjusted when exiting to ensure that the safeline program ends safely.
             """
             self._stop_event.set()
             self._finished_event.wait()
 
         def run(self):
             while True:
-                # 如果 _flush_event 标志位为 True，或者等待超过 _interval 则继续执行
                 self._flush_event.wait(self._interval)
                 self._consumer._perform_request()
                 self._flush_event.clear()
-
-                # 发现 stop 标志位时安全退出
                 if self._stop_event.isSet():
                     break
             self._finished_event.set()
@@ -842,11 +768,6 @@ def _gzip_string(data):
 
 
 class _HttpServices(object):
-    """内部类，用于发送网络请求
-
-    指定接收端地址和项目 APP ID, 实现向接收端上传数据的接口. 发送前将数据默认使用 Gzip 压缩,
-    """
-
     def __init__(self, server_uri, appid, timeout=30000):
         self.url = server_uri
         self.appid = appid
@@ -854,15 +775,13 @@ class _HttpServices(object):
         self.compress = True
 
     def send(self, data, length):
-        """使用 Requests 发送数据给服务器
-
+        """
         Args:
-            data: 待发送的数据
+            data:
             length
-
         Raises:
-            TGAIllegalDataException: 数据错误
-            TGANetworkException: 网络错误
+            TGAIllegalDataException: 
+            TGANetworkException: network error
         """
         headers = {'appid': self.appid, 'TA-Integration-Type': 'python-sdk', 'TA-Integration-Version': __version__ ,
                    'TA-Integration-Count': length}
@@ -891,19 +810,20 @@ class _HttpServices(object):
 
 
 class DebugConsumer(object):
-    """逐条、同步的发送数据给接收服务器
-
-    服务端会对数据进行严格校验，当某个属性不符合规范时，整条数据都不会入库. 当数据格式错误时抛出包含详细原因的异常信息.
-    建议首先使用此 Consumer 来调试埋点数据.
+    """
+    The server will strictly verify the data. When a certain attribute does not meet the specification, the entire data will not be stored. When the data format is wrong, an exception message containing detailed reasons will be thrown.
+    It is recommended to use this Consumer first to debug buried point data.
     """
 
-    def __init__(self, server_uri, appid, timeout=30000, write_data=True):
-        """创建 DebugConsumer
+    def __init__(self, server_uri, appid, timeout=30000, write_data=True, device_id=""):
+        """
 
         Args:
-            server_uri: 服务器的 URL 地址
-            appid: 项目的 APP ID
-            timeout: 请求的超时时间, 单位毫秒, 默认为 30000 ms
+            server_uri: string
+            appid: string
+            timeout: Request timeout, in milliseconds, default is 30000 ms
+            write_data: write data to TE or not
+            device_id: debug device in TE
         """
         server_url = urlparse(server_uri)
         debug_url = server_url._replace(path='/data_debug')
@@ -911,16 +831,22 @@ class DebugConsumer(object):
         self.__appid = appid
         self.__timeout = timeout
         self.__writer_data = write_data
+        self.__device_id = device_id
         TGAnalytics.enableLog(True)
-
 
     def add(self, msg):
         try:
             dry_run = 0
             if not self.__writer_data:
                 dry_run = 1
+
+            params = {'source': 'server', 'appid': self.__appid, 'data': msg, 'dryRun': dry_run}
+
+            if len(self.__device_id) > 0:
+                params["deviceId"] = self.__device_id
+
             response = requests.post(self.__server_uri,
-                                     data={'source': 'server', 'appid': self.__appid, 'data': msg, 'dryRun': dry_run},
+                                     data=params,
                                      timeout=self.__timeout)
             if response.status_code == 200:
                 responseData = json.loads(response.text)
