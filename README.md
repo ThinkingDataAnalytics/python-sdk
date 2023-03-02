@@ -1,24 +1,9 @@
-# Thinking Data Analytics
+# ThinkingData SDK for Python
+![output](https://user-images.githubusercontent.com/53337625/205621683-ed9b97ef-6a52-4903-a2c0-a955dddebb7d.png)
 
-This is the official Python SDK for Thinking Data Analytics.
+This is the [ThinkingData](https://www.thinkingdata.cn)™ SDK for Python. Documentation is available on our help center in the following languages:
 
-## Easy Installation
+- [English](https://docs.thinkingdata.cn/ta-manual/latest/en/installation/installation_menu/server_sdk/python_sdk_installation/python_sdk_installation.html)
+- [中文](https://docs.thinkingdata.cn/ta-manual/latest/installation/installation_menu/server_sdk/python_sdk_installation/python_sdk_installation.html)
 
-You can get Thinking Data Analytics SDK using pip.
-
-pip install ThinkingDataSdk
-
-Once the SDK is successfully installed, use the TGA SDK likes:
-
-python
-import tgasdk
-
-tga = TGAnalytics(LoggingConsumer("F:/home/sdk/log"))
-tga.track('dis',None,"shopping",properties)
-tga.flush()
-tga.close()
-
-## To learn more
-
-See our [full manual](http://doc.thinkinggame.cn/tgamanual/installation/python_sdk_installation.html)
-
+---

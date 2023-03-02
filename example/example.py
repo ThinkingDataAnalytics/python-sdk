@@ -1,142 +1,170 @@
 # encoding:utf-8
-import datetime
-import uuid
-
-import os
 import sys
+from tgasdk.sdk import *
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 
-from tgasdk.sdk import TGAException, TGAnalytics, BatchConsumer, AsyncBatchConsumer, LoggingConsumer, DebugConsumer, \
-    TGAIllegalDataException, \
-    ROTATE_MODE
+TGAnalytics.enableLog(isPrint=False)
 
-# BatchConsumer
-# batchConsumer = BatchConsumer(server_uri="http://localhost:port/", appid="APPID")
-# batchConsumer = BatchConsumer(server_uri="url", appid="appid",
-#                               compress=False)
-# tga = TGAnalytics(batchConsumer)
-# tga = TGAnalytics(AsyncBatchConsumer("url","appid"))
+# consumer = DebugConsumer(server_uri="http://localhost:port/", appid="APPID", device_id="123456789")
+# consumer = BatchConsumer(server_uri="http://localhost:port/", appid="APPID")
+# consumer = AsyncBatchConsumer(server_uri="http://localhost:port/", appid="APPID")
+consumer = LoggingConsumer("./log", rotate_mode=ROTATE_MODE.HOURLY, buffer_size=1)
 
-tga = TGAnalytics(LoggingConsumer("./log", rotate_mode=ROTATE_MODE.HOURLY))
-
-# tga =TGAnalytics(DebugConsumer("https://receiver-ta-demo.thinkingdata.cn",
-#                                "appid",
-#                                device_id="123456789"))
-# DebugConsumer
-# tga = TGAnalytics(DebugConsumer(server_uri="http://localhost:port", appid="APPID",write_data=True))
+te = TGAnalytics(consumer, strict=False)
 
 distinct_id = "ABD"
 account_id = "11111"
 
-# properties = {"OrderId": "abc_123",
-#               "lasttime": datetime.date.today(),
-#               "age": 44,
-#               "string1": "111",
-#               "#time": datetime.datetime.now().replace(second=0)}
-# list = []
-# list.append('Google')
-# list.append('Runoob')
-# list.append('True')
-# list.append('2.222')
-# list.append('2020-02-11 14:17:43.471')
-# properties['arrkey4'] = list
-
-# dict = {'Name': 'Zara', 'Age': 7, 'Class': 'First', 'Time': datetime.datetime.now(),
-#         'exam': {'Time': 'aaaaa'}}
-
-# properties['dict'] = dict
-
-
-# try:
-#     tga.user_set(account_id=account_id, properties=properties)
-# except Exception as e:
-#     raise TGAIllegalDataException(e)
-# tga.flush()
-
-# properties.clear()
-# properties = {'arrkey4': list, 'arrkey3': ['appendList', '222'], 'dict1': {'name': 'Tom', 'Age': 28}}
-# try:
-#     tga.user_append(account_id=account_id, distinct_id=distinct_id, properties=properties)
-# except Exception as e:
-#     raise TGAIllegalDataException(e)
-
-# # properties.clear()
-
-# try:
-#     tga.user_unset(account_id, distinct_id, ["string1", "lasttime"])
-# except Exception as e:
-
-#     raise TGAIllegalDataException(e)
-
-# properties.clear()
-# properties = {"OrderId": "abc_123",
-#               "#time": datetime.date.today(),
-#               "age": 33,
-#               "#uuid": uuid.uuid1(),  #optional，format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-#               "#ip": "123.123.123.123"}
-# event_name = "zhouzhou"
-
-# json = {"a": "a", "b": "b"}
-# json_array = [json, {"c": "c"}]
-# properties['json'] = json
-# properties['json_array'] = json_array
-# try:
-#     tga.track(account_id=account_id, distinct_id=distinct_id, properties=properties, event_name=event_name)
-# except Exception as e:
-#     raise TGAIllegalDataException(e)
-
-
-# try:
-#     tga.user_del(account_id=account_id, distinct_id=distinct_id)
-# except Exception as e:
-#     raise TGAIllegalDataException(e)
-
-
-# properties.clear()
-# properties = {"tkey":datetime.datetime.now(),
-#               "tkey2":datetime.date.today(),
-#               'tkey3':[datetime.datetime.now(),datetime.date.today(),{"tkey2":datetime.date.today()}],
-#               'tkey4':{"tkey2":datetime.date.today(),"tkey":datetime.datetime.now()},
-#               "#time": datetime.datetime.now()}
-# event_name = "eventName"
-# try:
-#     tga.track(account_id=account_id, distinct_id=distinct_id, properties=properties, event_name=event_name)
-# except Exception as e:
-#     raise TGAIllegalDataException(e)
-
-
-# class DynamicPropertiesTracker(DynamicSuperPropertiesTracker):
-#     def get_dynamic_super_properties(self):
-#         return {'test_dynamic_key':'test_dynamic_value'}
-
-# tga.set_dynamic_super_properties_tracker(DynamicPropertiesTracker())
-
-
-# try:
-#     tga.track_first(account_id=account_id, distinct_id=distinct_id, event_name='first_event', first_check_id='9999s0dadad', properties=properties)
-# except Exception as e:
-#     raise TGAIllegalDataException(e)
-    
-# #user_uniq_append
-# properties.clear()
-# properties = {'arrkey4': ['addValue','True'], 'arrkey3': ['appendList', '222']}
-# try:
-#     tga.user_uniq_append(account_id=account_id, distinct_id=distinct_id, properties=properties)
-# except Exception as e:
-#     raise TGAIllegalDataException(e)
-
-# tga.flush()
-
-
-
-# properties = {"#ip":'12.12.12.12',"#first_check_id":'123',"#app_id":'12',"#time":datetime.datetime.now(),'#uuid':'DDDDDSA'}
-
-event_name = "eventName"
 try:
-    tga.track(account_id=account_id, distinct_id=distinct_id, properties={}, event_name=event_name)
+    # init property: 'name', 'count', 'arr'
+    user_set_properties = {'name': 'test', 'count': 1, 'arr': ['111', '222']}
+    te.user_set(account_id=account_id, distinct_id=distinct_id, properties=user_set_properties)
 except Exception as e:
-    print(e)
-    # raise TGAIllegalDataException(e)
-tga.flush()
-tga.close()
+    raise TGAIllegalDataException(e)
+
+try:
+    # Can only be set once
+    user_set_once_properties = {'set_once_mac': "111bbb"}
+    te.user_setOnce(account_id, distinct_id, user_set_once_properties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+try:
+    # clean property: 'name' now is nil
+    user_unset_properties = ['name']
+    te.user_unset(account_id, distinct_id, user_unset_properties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+try:
+    # append property: 'arr' now is ['111', '222', '222', '333']
+    user_append_properties = {'arr': ['222', '333']}
+    te.user_append(account_id=account_id, distinct_id=distinct_id, properties=user_append_properties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+try:
+    # unique append property: 'arr' now is ['111', '222', '333']
+    user_unique_properties = {'arr': ['222', '333']}
+    te.user_uniq_append(account_id=account_id, distinct_id=distinct_id, properties=user_unique_properties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+try:
+    # in previous 'user_set()', 'count' is 1. it will be 5 after 'user_add()'
+    user_add_properties = {"count": 4}
+    te.user_add(account_id, distinct_id, user_add_properties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+eventProperties = {
+    "#time": datetime.datetime.now(),
+    "#ip": "123.123.123.123",
+    "age": 18,
+    "name": "hello",
+    "array": ["string1", "🙂", "😀"],
+    "dict": {
+        "name": "world",
+        "time": datetime.datetime.now(),
+        "arrayString": ["aa", "bb", "cc"],
+        "arrayNumber": [1, 2.0, 3333.4444],
+        "isDog": False,
+        "tupleA": ('t_a', 't_2'),
+        "dictA": {"key1": "value1", "key2": "value2"},
+    },
+    "timeDict": {
+        "t_key": datetime.datetime.now(),
+        "t_key2": datetime.date.today(),
+        't_key3': [
+            datetime.datetime.now(),
+            datetime.date.today(),
+            {"child_t_key": datetime.date.today()},
+        ],
+    }
+}
+
+try:
+    te.track(account_id=account_id, distinct_id=distinct_id, event_name="a", properties=eventProperties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+
+class DynamicPropertiesTracker(DynamicSuperPropertiesTracker):
+    def get_dynamic_super_properties(self):
+        return {'super_dynamic_key': datetime.datetime.now()}
+
+
+te.set_dynamic_super_properties_tracker(DynamicPropertiesTracker())
+te.set_super_properties({"super_key_1": "value_1"})
+
+try:
+    te.track(account_id=account_id,
+             distinct_id=distinct_id,
+             event_name="track_with_super_property",
+             properties=eventProperties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+te.clear_super_properties()
+te.set_dynamic_super_properties_tracker(None)
+
+try:
+    te.track(account_id=account_id,
+             distinct_id=distinct_id,
+             event_name="track_without_super_property",
+             properties=eventProperties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+try:
+    te.track_first(account_id=account_id,
+                   distinct_id=distinct_id,
+                   event_name='first_event',
+                   first_check_id='9999abc',
+                   properties=eventProperties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+eventProperties_1 = {
+    "age": 18,
+    "name": "hello",
+}
+
+try:
+    te.track(account_id=account_id,
+             distinct_id=distinct_id,
+             event_name="track_before_update",
+             properties=eventProperties)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+eventProperties_1_update = {
+    "age": 88,
+}
+
+try:
+    te.track_update(account_id=account_id,
+                    distinct_id=distinct_id,
+                    event_name='update_age',
+                    event_id='123',
+                    properties=eventProperties_1_update)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+eventProperties_1_overwrite = {
+    "age": 88,
+}
+
+try:
+    te.track_overwrite(account_id=account_id,
+                       distinct_id=distinct_id,
+                       event_name='overwrite',
+                       event_id='123',
+                       properties=eventProperties_1_overwrite)
+except Exception as e:
+    raise TGAIllegalDataException(e)
+
+te.flush()
+te.close()
