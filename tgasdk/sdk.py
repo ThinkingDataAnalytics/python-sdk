@@ -86,7 +86,7 @@ def assert_properties(action_type, properties):
                 raise TGAIllegalDataException('user_add properties must be number type')
 
 
-__version__ = '2.1.1'
+__version__ = '2.1.2'
 is_print = False
 
 
