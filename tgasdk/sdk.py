@@ -86,7 +86,7 @@ def assert_properties(action_type, properties):
                 raise TGAIllegalDataException('user_add properties must be number type')
 
 
-__version__ = '2.1.2'
+__version__ = '2.1.3'
 is_print = False
 
 
@@ -162,7 +162,15 @@ class TGAnalytics(object):
         Parameters:
             dynamic_super_properties_tracker: is object which has defined function: 'get_dynamic_super_properties()'
         """
-        self.__dynamic_super_properties_tracker = dynamic_super_properties_tracker
+        if dynamic_super_properties_tracker is None:
+            self.__dynamic_super_properties_tracker = None
+            log("clean up dynamic super properties")
+        elif isinstance(dynamic_super_properties_tracker, DynamicSuperPropertiesTracker):
+            self.__dynamic_super_properties_tracker = dynamic_super_properties_tracker
+        else:
+            msg = "'set_dynamic_super_properties_tracker()' params type is must be " \
+                  "DynamicSuperPropertiesTracker or subclass. but now type is: {nowType}"
+            log(msg.format(nowType=type(dynamic_super_properties_tracker)))
 
     def user_set(self, distinct_id=None, account_id=None, properties=None):
         """
@@ -353,7 +361,7 @@ class TGAnalytics(object):
             '#lib_version': __version__,
         }
         all_properties.update(self.__super_properties)
-        if self.__dynamic_super_properties_tracker:
+        if isinstance(self.__dynamic_super_properties_tracker, DynamicSuperPropertiesTracker):
             all_properties.update(self.__dynamic_super_properties_tracker.get_dynamic_super_properties())
         if properties:
             all_properties.update(properties)
