@@ -1,14 +1,14 @@
 from tgasdk.sdk import *
 
 __all__ = [
-    'TGAnalytics',
-    'LoggingConsumer',
-    'BatchConsumer',
-    'DebugConsumer',
-    'AsyncBatchConsumer',
-    'TGAException',
-    'TGAIllegalDataException',
-    'TGANetworkException',
-    'ROTATE_MODE',
-    'DynamicSuperPropertiesTracker',
+    'TDAnalytics',
+    'TDLogConsumer',
+    'TDBatchConsumer',
+    'TDDebugConsumer',
+    'TDAsyncBatchConsumer',
+    'TDException',
+    'TDIllegalDataException',
+    'TDNetworkException',
+    'TD_ROTATE_MODE',
+    'TDDynamicSuperPropertiesTracker',
 ]

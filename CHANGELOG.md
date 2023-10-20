@@ -1,3 +1,13 @@
+### v3.0.0
+##### Date：2023/09/21
+##### Notes：
+- Warning: Class name replacement, incompatible with older versions
+
+### v2.1.3
+##### Date：2023/03/02
+##### Notes：
+- Bugfix: fix dynamic wrong type
+
 ### v2.1.1
 ##### Date：2023/03/01
 ##### Notes：
